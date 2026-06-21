@@ -23,11 +23,15 @@ from celery import Celery
 BROKER_URL  = os.environ.get("CELERY_BROKER_URL",    "redis://localhost:6379/0")
 BACKEND_URL = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
+# How often the Junction safety-net pull runs (seconds). Keep it under the failover
+# staleness window so xDRIP fallback is detected promptly.
+CGM_POLL_INTERVAL_SEC = int(os.environ.get("CGM_POLL_INTERVAL_SEC", "600"))
+
 celery_app = Celery(
     "glucosense",
     broker=BROKER_URL,
     backend=BACKEND_URL,
-    include=["src.tasks.retrain"],
+    include=["src.tasks.retrain", "src.tasks.cgm_poll"],
 )
 
 celery_app.conf.update(
@@ -41,5 +45,13 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,   # one task at a time (training is heavy)
     task_routes={
         "src.tasks.retrain.*": {"queue": "glucosense"},
+        "src.tasks.cgm_poll.*": {"queue": "glucosense"},
+    },
+    beat_schedule={
+        "junction-glucose-pull": {
+            "task": "src.tasks.cgm_poll.poll_junction_glucose",
+            "schedule": float(CGM_POLL_INTERVAL_SEC),
+            "options": {"queue": "glucosense"},
+        },
     },
 )

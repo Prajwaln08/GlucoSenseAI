@@ -21,6 +21,7 @@ from src.api.deps import COOKIE_NAME, get_db, get_optional_user
 from src.api.routers.auth import ALGORITHM, SECRET_KEY, TOKEN_EXPIRE_MINUTES, _pwd_ctx
 from src.db import crud
 from src.db.models import User
+from src.integrations import cgm_router, keys
 from src.web.templating import templates
 
 router = APIRouter(include_in_schema=False)
@@ -28,6 +29,7 @@ router = APIRouter(include_in_schema=False)
 VALID_DATASETS = ("cgmacros", "nature_paper")
 VALID_MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack", "other")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
 # Glucose target band (mg/dL) — standard time-in-range window.
 TIR_LOW, TIR_HIGH = 70, 180
@@ -260,6 +262,13 @@ def food_delete(
 
 # ── connect (data sources) ────────────────────────────────────────────────────
 
+def _xdrip_push_url(user: User) -> str | None:
+    if not user.cgm_api_key:
+        return None
+    path = f"/cgm/reading?user_id={user.id}&key={user.cgm_api_key}"
+    return f"{PUBLIC_BASE_URL}{path}" if PUBLIC_BASE_URL else path
+
+
 @router.get("/connect", response_class=HTMLResponse)
 def connect_page(request: Request, user: User = Depends(get_optional_user)):
     if not user:
@@ -268,7 +277,17 @@ def connect_page(request: Request, user: User = Depends(get_optional_user)):
         request, "connect.html",
         user=user,
         junction_linked=bool(getattr(user, "junction_user_id", None)),
+        cgm_status=cgm_router.status(user),
+        xdrip_url=_xdrip_push_url(user),
     )
+
+
+@router.post("/connect/xdrip-key")
+def connect_provision_xdrip(user: User = Depends(get_optional_user), db: Session = Depends(get_db)):
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    keys.ensure_cgm_key(db, user, rotate=True)
+    return RedirectResponse("/connect", status_code=303)
 
 
 # ── history ───────────────────────────────────────────────────────────────────

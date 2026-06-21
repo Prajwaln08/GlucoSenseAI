@@ -60,9 +60,10 @@ TAGS_METADATA = [
     {
         "name": "cgm",
         "description": (
-            "CGM reading ingestion and query. "
-            "**POST /cgm/reading** receives real-time readings from xDRIP+ (no auth required). "
-            "**GET /cgm/readings** returns recent readings for portal display."
+            "CGM ingestion + failover. Junction is the **primary** source (see *wearable*); "
+            "xDRIP+ is the **fallback** via **POST /cgm/reading** (now authenticated with a "
+            "per-user key — provision via **POST /cgm/key**). **GET /cgm/status** shows which "
+            "source is live; **GET /cgm/readings** returns recent readings."
         ),
     },
 ]

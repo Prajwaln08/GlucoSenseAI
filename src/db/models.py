@@ -51,6 +51,11 @@ class User(Base):
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
     # Junction wearable integration
     junction_user_id = Column(String, nullable=True, index=True)
+    # Multi-source CGM failover (Junction primary → xDRIP fallback)
+    cgm_active_source       = Column(String, nullable=True)   # "junction" | "xdrip"
+    cgm_last_junction_ok_at = Column(DateTime(timezone=True), nullable=True)
+    cgm_last_xdrip_at       = Column(DateTime(timezone=True), nullable=True)
+    cgm_api_key             = Column(String, nullable=True, index=True)  # per-user xDRIP push key
 
     prediction_logs = relationship("PredictionLog", back_populates="user",
                                    cascade="all, delete-orphan",
@@ -155,6 +160,8 @@ class CgmReading(Base):
     source                 = Column(String, nullable=True, default="junction")  # "xdrip" | "junction"
     created_at             = Column(DateTime(timezone=True), nullable=True)
     direction              = Column(String, nullable=True)
+    device_type            = Column(String, nullable=True)   # "cgm" (provenance / future-proofing)
+    ingested_via           = Column(String, nullable=True)   # "webhook" | "poll" | "manual_sync" | "push"
 
 
 class WearableActivity(Base):

@@ -4,6 +4,18 @@
 <h1 class="text-2xl font-semibold mb-1">Connect your data</h1>
 <p class="text-slate-500 text-sm mb-6">GlucoSense reads your glucose and watch data to forecast and coach.</p>
 
+<!-- live CGM source -->
+<div class="mb-6 rounded-2xl border p-4 flex items-center gap-3
+            {{ 'border-emerald-200 bg-emerald-50' if cgm_status.active_source == 'junction' else 'border-amber-200 bg-amber-50' }}">
+  <span class="text-xl">{{ '🟢' if cgm_status.active_source == 'junction' else '🟡' }}</span>
+  <div class="text-sm">
+    <span class="font-medium">Live CGM source: {{ cgm_status.active_source }}</span>
+    <span class="text-slate-500">
+      — {{ 'Junction is delivering (primary).' if cgm_status.active_source == 'junction' else 'Junction is stale; xDRIP fallback is active.' }}
+    </span>
+  </div>
+</div>
+
 <div class="space-y-4 max-w-2xl">
   <!-- Junction (primary CGM) -->
   <div class="bg-white rounded-2xl border border-slate-200 p-5 flex items-start justify-between gap-4">
@@ -15,10 +27,11 @@
       <p class="text-sm text-slate-500 mt-1">FreeStyle Libre, Dexcom and 300+ devices. The main way your glucose flows in.</p>
       <div class="text-xs mt-2 {{ 'text-emerald-600' if junction_linked else 'text-slate-400' }}">
         {{ '● Linked' if junction_linked else '○ Not linked yet' }}
+        {% if cgm_status.last_junction_ok_at %}· last data {{ cgm_status.last_junction_ok_at|fmt_dt }}{% endif %}
       </div>
     </div>
     <button disabled class="text-sm bg-slate-100 text-slate-400 rounded-lg px-4 py-2 cursor-not-allowed">
-      {{ 'Manage' if junction_linked else 'Link (Phase 3)' }}
+      {{ 'Manage' if junction_linked else 'Link in app' }}
     </button>
   </div>
 
@@ -40,14 +53,31 @@
     <div class="flex items-center gap-2">
       <h2 class="font-semibold">xDRIP+</h2>
       <span class="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">fallback CGM</span>
+      {% if cgm_status.active_source == 'xdrip' and cgm_status.xdrip_fresh %}
+      <span class="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">● active now</span>
+      {% endif %}
     </div>
     <p class="text-sm text-slate-500 mt-1">
-      Automatic backup if Junction can't deliver readings. Point xDRIP+ at your personal
-      webhook URL (a secured per-user endpoint is set up in Phase 3).
+      Automatic backup if Junction can't deliver readings. Point xDRIP+ (Settings →
+      Cloud Upload → REST API Upload) at your secured personal URL below.
     </p>
-    <div class="text-xs mt-2 text-slate-400">○ Setup available in Phase 3</div>
+
+    {% if xdrip_url %}
+    <div class="mt-3">
+      <label class="block text-xs font-medium text-slate-500 mb-1">Your xDRIP push URL (keep it secret)</label>
+      <input readonly value="{{ xdrip_url }}" onclick="this.select()"
+             class="w-full text-xs font-mono rounded-lg border border-slate-300 px-3 py-2 bg-slate-50">
+    </div>
+    {% endif %}
+
+    <form method="post" action="/connect/xdrip-key" class="mt-3"
+          onsubmit="return confirm('Generate a new key? Any old xDRIP URL will stop working.');">
+      <button class="text-sm bg-slate-800 hover:bg-slate-900 text-white rounded-lg px-4 py-2">
+        {{ 'Rotate key' if xdrip_url else 'Generate xDRIP key' }}
+      </button>
+    </form>
   </div>
 </div>
 
-<p class="mt-8 text-xs text-slate-400">Live connectors are wired in upcoming phases. This page shows your current link status.</p>
+<p class="mt-8 text-xs text-slate-400">Junction (primary) → xDRIP (fallback) failover is automatic. Google Fit wiring lands in Phase 4.</p>
 {% endblock %}

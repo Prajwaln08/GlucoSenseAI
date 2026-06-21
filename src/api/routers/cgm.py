@@ -1,28 +1,35 @@
 """
-xDRIP+ CGM webhook receiver and reading query endpoints.
+xDRIP+ CGM ingestion (FALLBACK source) + reading queries + failover status.
 
-POST /cgm/reading?user_id=<uuid>
-  — receives real-time readings pushed by xDRIP+ (no auth; user identified by query param)
-  — configure in xDRIP+: Settings → Cloud Upload → REST API Upload → Base URL:
-      https://glucosense-ai-em0v.onrender.com/cgm/reading?user_id=<uuid>
+xDRIP is the automatic fallback when Junction (primary) can't deliver. Its inbound
+push is now authenticated with a per-user key (no more open user_id enumeration):
 
-GET  /cgm/readings?user_id=<uuid>&limit=288
-  — returns recent readings (newest first) — used by the doctor portal chart
+  POST /cgm/reading?user_id=<uuid>&key=<key>     (or header  X-CGM-Key: <key>)
+    — real-time reading from xDRIP+; routed through the unified ingest layer.
+
+  POST /cgm/key            — (auth) provision / rotate my xDRIP key + get my push URL
+  GET  /cgm/status         — (auth) which CGM source is live (junction|xdrip) + heartbeats
+  GET  /cgm/readings       — recent readings, newest first
 """
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+import os
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_db
+from src.api.deps import get_current_user, get_db
 from src.db.models import CgmReading, User
+from src.integrations import cgm_router, keys
+from src.integrations.ingest import ingest_cgm_readings
+from src.integrations.xdrip import normalize_xdrip
 
 router = APIRouter(prefix="/cgm", tags=["cgm"])
+
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
 
 class XDripPayload(BaseModel):
@@ -41,48 +48,73 @@ class ReadingOut(BaseModel):
     source: str | None
 
 
+class CgmKeyResponse(BaseModel):
+    cgm_api_key: str
+    push_url: str
+
+
+class CgmStatusResponse(BaseModel):
+    active_source: str
+    junction_fresh: bool
+    xdrip_fresh: bool
+    last_junction_ok_at: datetime | None
+    last_xdrip_at: datetime | None
+    staleness_minutes: int
+
+
+def _push_url(user_id: str, key: str) -> str:
+    path = f"/cgm/reading?user_id={user_id}&key={key}"
+    return f"{PUBLIC_BASE_URL}{path}" if PUBLIC_BASE_URL else path
+
+
 @router.post("/reading", status_code=200)
 def receive_xdrip_reading(
     payload: XDripPayload,
     user_id: str = Query(..., description="Internal user UUID (users.id)"),
+    key: str | None = Query(None, description="Per-user xDRIP key (or send X-CGM-Key header)"),
+    x_cgm_key: str | None = Header(None, alias="X-CGM-Key"),
     db: Session = Depends(get_db),
 ) -> dict:
-    """
-    Receives a real-time CGM reading from xDRIP+.
-
-    Configure xDRIP+ → Settings → Cloud Upload → REST API Upload:
-      Base URL: https://glucosense-ai-em0v.onrender.com/cgm/reading?user_id=<uuid>
-    """
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    """Receive a real-time CGM reading from xDRIP+ (authenticated fallback path)."""
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()  # noqa: E712
     if not user:
         raise HTTPException(status_code=404, detail="Patient not found.")
 
-    ts = datetime.fromtimestamp(payload.date / 1000.0, tz=timezone.utc)
+    if not keys.verify_cgm_key(user, key or x_cgm_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing CGM key.")
 
-    # Dedup: one reading per (user, timestamp)
-    exists = (
-        db.query(CgmReading)
-        .filter(CgmReading.user_id == user_id, CgmReading.timestamp == ts)
-        .first()
+    reading = normalize_xdrip(
+        user_id=user.id, sgv=payload.sgv, date_ms=payload.date,
+        direction=payload.direction, device=payload.device,
     )
-    if exists:
-        return {"saved": False, "reason": "duplicate"}
-
-    glucose_mmol = round(payload.sgv / 18.0182, 2)
-
-    db.add(CgmReading(
-        id=str(uuid.uuid4()),
-        user_id=user_id,
-        timestamp=ts,
-        glucose_mgdl=payload.sgv,
-        glucose_mmol=glucose_mmol,
-        direction=payload.direction,
-        source_device_id=payload.device or "xdrip",
-        source="xdrip",
-        created_at=datetime.now(timezone.utc),
-    ))
+    saved = ingest_cgm_readings(db, [reading], commit=False)
+    cgm_router.record_xdrip(db, user)        # heartbeat + re-evaluate active source
     db.commit()
-    return {"saved": True, "timestamp": ts.isoformat(), "glucose_mgdl": payload.sgv}
+
+    if not saved:
+        return {"saved": False, "reason": "duplicate"}
+    return {"saved": True, "timestamp": reading.timestamp.isoformat(), "glucose_mgdl": reading.glucose_mgdl}
+
+
+@router.post("/key", response_model=CgmKeyResponse)
+def provision_cgm_key(
+    rotate: bool = Query(False, description="Rotate (replace) the existing key"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CgmKeyResponse:
+    """Create (or rotate) my xDRIP push key and return the URL to paste into xDRIP+."""
+    key = keys.ensure_cgm_key(db, current_user, rotate=rotate)
+    return CgmKeyResponse(cgm_api_key=key, push_url=_push_url(current_user.id, key))
+
+
+@router.get("/status", response_model=CgmStatusResponse)
+def cgm_status(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CgmStatusResponse:
+    """Which CGM source is currently live for me (Junction primary vs xDRIP fallback)."""
+    cgm_router.refresh_active_source(db, current_user, commit=True)
+    return CgmStatusResponse(**cgm_router.status(current_user))
 
 
 @router.get("/readings", response_model=list[ReadingOut])
@@ -101,12 +133,8 @@ def get_readings(
     )
     return [
         ReadingOut(
-            id=r.id,
-            timestamp=r.timestamp,
-            glucose_mgdl=r.glucose_mgdl,
-            glucose_mmol=r.glucose_mmol,
-            direction=r.direction,
-            source=r.source,
+            id=r.id, timestamp=r.timestamp, glucose_mgdl=r.glucose_mgdl,
+            glucose_mmol=r.glucose_mmol, direction=r.direction, source=r.source,
         )
         for r in rows
     ]
