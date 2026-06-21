@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routers import account, auth, cgm, food, health, predict, wearable
+from src.api.routers import account, auth, cgm, food, googlefit, health, predict, wearable
 from src.web.views import router as web_router
 from src.serving.model_loader import warm_cache
 from src.utils import get_logger
@@ -65,6 +65,18 @@ TAGS_METADATA = [
             "per-user key — provision via **POST /cgm/key**). **GET /cgm/status** shows which "
             "source is live; **GET /cgm/readings** returns recent readings."
         ),
+    },
+    {
+        "name": "googlefit",
+        "description": (
+            "Google Fit — the **sole source** for all Huawei-watch data (HR, steps, sleep, "
+            "SpO₂, distance, calories). OAuth connect via **GET /googlefit/authorize**; pull "
+            "days with **POST /googlefit/sync**."
+        ),
+    },
+    {
+        "name": "account",
+        "description": "Privacy: **GET /account/export** (download all my data) and **DELETE /account** (erase).",
     },
 ]
 
@@ -152,6 +164,7 @@ app.include_router(predict.router, prefix="/predict")
 app.include_router(food.router)
 app.include_router(wearable.router)
 app.include_router(cgm.router)
+app.include_router(googlefit.router)
 app.include_router(account.router)
 
 # ── Server-rendered patient web UI + static assets ────────────────────────────

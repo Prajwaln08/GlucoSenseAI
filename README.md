@@ -47,9 +47,9 @@ uvicorn src.api.main:app --reload      # API + docs at /docs
 
 Staged build in progress (see the implementation plan):
 - **Phase 0** — repo scaffold ✅
-- **Phase 1** — remove doctor layer
-- **Phase 2** — patient web UI
-- **Phase 3** — Junction primary + xDRIP fallback (unified ingestion)
-- **Phase 4** — Google Fit watch sync
+- **Phase 1** — remove doctor layer ✅
+- **Phase 2** — patient web UI ✅
+- **Phase 3** — Junction primary + xDRIP fallback (unified ingestion) ✅
+- **Phase 4** — Google Fit watch sync ✅
 - **Phase 5** — privacy / deploy / polish
 - **Phase 6** — *(future)* AI coach

@@ -279,6 +279,8 @@ def connect_page(request: Request, user: User = Depends(get_optional_user)):
         junction_linked=bool(getattr(user, "junction_user_id", None)),
         cgm_status=cgm_router.status(user),
         xdrip_url=_xdrip_push_url(user),
+        googlefit_connected=bool(user.google_fit_refresh_token),
+        googlefit_last_sync=user.google_fit_last_sync_at,
     )
 
 
@@ -287,6 +289,19 @@ def connect_provision_xdrip(user: User = Depends(get_optional_user), db: Session
     if not user:
         return RedirectResponse("/login", status_code=303)
     keys.ensure_cgm_key(db, user, rotate=True)
+    return RedirectResponse("/connect", status_code=303)
+
+
+@router.post("/connect/googlefit/sync")
+def connect_googlefit_sync(user: User = Depends(get_optional_user), db: Session = Depends(get_db)):
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if user.google_fit_refresh_token:
+        from src.api.routers.googlefit import run_sync  # local import avoids an import cycle
+        try:
+            run_sync(db, user)
+        except Exception:  # noqa: BLE001 — surface failures as a normal page reload, not a 500
+            db.rollback()
     return RedirectResponse("/connect", status_code=303)
 
 

@@ -43,9 +43,18 @@
         <span class="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">watch</span>
       </div>
       <p class="text-sm text-slate-500 mt-1">All your Huawei-watch data — heart rate, steps, sleep, SpO₂.</p>
-      <div class="text-xs mt-2 text-slate-400">○ Not connected yet</div>
+      <div class="text-xs mt-2 {{ 'text-emerald-600' if googlefit_connected else 'text-slate-400' }}">
+        {{ '● Connected' if googlefit_connected else '○ Not connected yet' }}
+        {% if googlefit_last_sync %}· last sync {{ googlefit_last_sync|fmt_dt }}{% endif %}
+      </div>
     </div>
-    <button disabled class="text-sm bg-slate-100 text-slate-400 rounded-lg px-4 py-2 cursor-not-allowed">Connect (Phase 4)</button>
+    {% if googlefit_connected %}
+    <form method="post" action="/connect/googlefit/sync">
+      <button class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2">Sync now</button>
+    </form>
+    {% else %}
+    <a href="/googlefit/authorize" class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2">Connect</a>
+    {% endif %}
   </div>
 
   <!-- xDRIP (fallback) -->

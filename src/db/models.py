@@ -56,6 +56,12 @@ class User(Base):
     cgm_last_junction_ok_at = Column(DateTime(timezone=True), nullable=True)
     cgm_last_xdrip_at       = Column(DateTime(timezone=True), nullable=True)
     cgm_api_key             = Column(String, nullable=True, index=True)  # per-user xDRIP push key
+    # Google Fit (sole source for all Huawei-watch data)
+    google_fit_user_id       = Column(String, nullable=True, index=True)
+    google_fit_refresh_token = Column(Text, nullable=True)   # encrypt at rest in Phase 5
+    google_fit_token_expiry  = Column(DateTime(timezone=True), nullable=True)
+    google_fit_scopes        = Column(Text, nullable=True)
+    google_fit_last_sync_at  = Column(DateTime(timezone=True), nullable=True)
 
     prediction_logs = relationship("PredictionLog", back_populates="user",
                                    cascade="all, delete-orphan",
