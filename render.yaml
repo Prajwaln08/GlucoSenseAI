@@ -21,12 +21,32 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "60"
 
-      # Junction wearable
+      # Junction wearable (PRIMARY CGM)
       - key: JUNCTION_BASE_URL
         value: "https://api.sandbox.us.junction.com"
       - key: JUNCTION_API_KEY
         sync: false
       - key: JUNCTION_WEBHOOK_SECRET
+        sync: false
+
+      # Web UI / security
+      - key: CORS_ORIGINS
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: FIELD_ENCRYPTION_KEY     # Fernet key for secrets at rest
+        sync: false
+      - key: CGM_STALENESS_MINUTES
+        value: "20"
+
+      # Google Fit (sole watch source)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
         sync: false
 
       # Celery broker (API needs this to dispatch retrain tasks)
@@ -72,7 +92,7 @@ services:
     name: glucosense-worker
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A src.tasks.celery_app worker --loglevel=info -Q glucosense --concurrency=1
+    startCommand: celery -A src.tasks.celery_app worker --beat --loglevel=info -Q glucosense --concurrency=1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
@@ -106,6 +126,18 @@ services:
         value: "20"
       - key: MAX_RETRAIN_QUEUE_SIZE
         value: "5"
+
+      # Junction scheduled pull (celery beat) + failover + secrets-at-rest
+      - key: JUNCTION_BASE_URL
+        value: "https://api.sandbox.us.junction.com"
+      - key: JUNCTION_API_KEY
+        sync: false
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false
+      - key: CGM_STALENESS_MINUTES
+        value: "20"
+      - key: CGM_POLL_INTERVAL_SEC
+        value: "600"
 
   # ── Managed Redis (Celery broker + result backend) ───────────────────────────
   - type: redis

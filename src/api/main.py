@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from src.api.routers import account, auth, cgm, food, googlefit, health, predict, wearable
 from src.web.views import router as web_router
@@ -171,6 +172,9 @@ app.include_router(account.router)
 _static_dir = Path(__file__).parent.parent / "web" / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 app.include_router(web_router)
+
+# ── Observability: Prometheus HTTP metrics + domain counters at /metrics ──────
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.exception_handler(ValueError)

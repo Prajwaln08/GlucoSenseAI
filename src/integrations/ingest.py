@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from src.db.models import CgmReading, WearableActivity
 from src.integrations.schemas import ACTIVITY_FIELDS, ActivityIngest, CgmReadingIngest
+from src.utils.metrics import activity_days_upserted, cgm_readings_ingested
 
 
 def _now() -> datetime:
@@ -62,6 +63,7 @@ def ingest_cgm_readings(
             created_at=_now(),
         ))
         saved += 1
+        cgm_readings_ingested.labels(source=r.source).inc()
     if commit:
         db.commit()
     return saved
@@ -103,6 +105,7 @@ def upsert_activity(
         if existing is None:
             db.add(target)
             new += 1
+            activity_days_upserted.labels(provider=a.provider).inc()
     if commit:
         db.commit()
     return new

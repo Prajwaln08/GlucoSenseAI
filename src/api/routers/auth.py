@@ -18,10 +18,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_db
+from src.api.ratelimit import RateLimiter
 from src.db import crud
 from src.db.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Throttle login to blunt password brute-force (per client IP).
+login_rate_limit = RateLimiter(times=10, seconds=60)
 
 SECRET_KEY   = os.environ.get("SECRET_KEY",  "change-this-in-production")
 ALGORITHM    = os.environ.get("ALGORITHM",   "HS256")
@@ -130,6 +134,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> User:
 def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
+    _: None = Depends(login_rate_limit),
 ) -> Token:
     user = crud.get_user_by_email(db, form.username)
     if not user or not _pwd_ctx.verify(form.password, user.hashed_password):

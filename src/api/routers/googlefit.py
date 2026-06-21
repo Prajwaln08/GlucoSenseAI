@@ -24,6 +24,7 @@ from src.api.deps import ALGORITHM, SECRET_KEY, get_current_user, get_db
 from src.db.models import User
 from src.integrations.googlefit import GoogleFitClient
 from src.integrations.ingest import upsert_activity
+from src.utils.crypto import decrypt_field, encrypt_field
 
 router = APIRouter(prefix="/googlefit", tags=["googlefit"])
 
@@ -60,9 +61,10 @@ def _verify_state(state: str) -> str:
 
 def ensure_access_token(db: Session, user: User) -> str:
     """Refresh and return a usable access token; updates the stored expiry."""
-    if not user.google_fit_refresh_token:
+    refresh_token = decrypt_field(user.google_fit_refresh_token)
+    if not refresh_token:
         raise HTTPException(status_code=400, detail="Google Fit is not connected.")
-    tokens = client.refresh(user.google_fit_refresh_token)
+    tokens = client.refresh(refresh_token)
     expires_in = tokens.get("expires_in", 3600)
     user.google_fit_token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     db.commit()
@@ -90,7 +92,7 @@ def callback(
     tokens = client.exchange_code(code)
     refresh_token = tokens.get("refresh_token")
     if refresh_token:                       # Google omits it if already granted; keep the old one
-        user.google_fit_refresh_token = refresh_token
+        user.google_fit_refresh_token = encrypt_field(refresh_token)  # encrypted at rest
     user.google_fit_scopes = tokens.get("scope")
     user.google_fit_token_expiry = datetime.now(timezone.utc) + timedelta(seconds=tokens.get("expires_in", 3600))
     if not user.google_fit_user_id:

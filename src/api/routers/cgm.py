@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_db
+from src.api.ratelimit import RateLimiter
 from src.db.models import CgmReading, User
 from src.integrations import cgm_router, keys
 from src.integrations.ingest import ingest_cgm_readings
@@ -30,6 +31,9 @@ from src.integrations.xdrip import normalize_xdrip
 router = APIRouter(prefix="/cgm", tags=["cgm"])
 
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+
+# xDRIP pushes every ~5 min/user; this only blocks floods/abuse (per client IP).
+reading_rate_limit = RateLimiter(times=60, seconds=60)
 
 
 class XDripPayload(BaseModel):
@@ -74,6 +78,7 @@ def receive_xdrip_reading(
     key: str | None = Query(None, description="Per-user xDRIP key (or send X-CGM-Key header)"),
     x_cgm_key: str | None = Header(None, alias="X-CGM-Key"),
     db: Session = Depends(get_db),
+    _: None = Depends(reading_rate_limit),
 ) -> dict:
     """Receive a real-time CGM reading from xDRIP+ (authenticated fallback path)."""
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()  # noqa: E712

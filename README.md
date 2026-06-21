@@ -43,13 +43,23 @@ python -m alembic upgrade head         # apply migrations
 uvicorn src.api.main:app --reload      # API + docs at /docs
 ```
 
+## Security & operations
+
+- **Auth:** JWT in an HttpOnly cookie (web) or `Authorization: Bearer` (API). Login is rate-limited; the xDRIP push needs a per-user key.
+- **Secrets at rest:** the Google Fit refresh token is encrypted (Fernet) via `FIELD_ENCRYPTION_KEY` — generate one with
+  `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+- **CORS:** locked to `CORS_ORIGINS` (no `*` with credentials).
+- **Privacy:** `GET /account/export` (download all data) and `DELETE /account` (erase).
+- **Observability:** Prometheus metrics at `/metrics` — HTTP metrics plus CGM ingest by source, activity upserts by provider, and Junction API latency.
+- **Deploy:** `render.yaml` (API + Celery worker w/ beat + Redis) or `docker-compose up`. The worker runs the scheduled Junction pull (`CGM_POLL_INTERVAL_SEC`).
+
 ## Status
 
-Staged build in progress (see the implementation plan):
+Staged build (see the implementation plan):
 - **Phase 0** — repo scaffold ✅
 - **Phase 1** — remove doctor layer ✅
 - **Phase 2** — patient web UI ✅
 - **Phase 3** — Junction primary + xDRIP fallback (unified ingestion) ✅
 - **Phase 4** — Google Fit watch sync ✅
-- **Phase 5** — privacy / deploy / polish
+- **Phase 5** — privacy / observability / deploy ✅
 - **Phase 6** — *(future)* AI coach

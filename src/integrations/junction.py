@@ -25,6 +25,7 @@ from typing import Any, Optional
 import httpx
 
 from src.integrations.schemas import ActivityIngest, cgm_from_value
+from src.utils.metrics import junction_request_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,9 @@ class JunctionClient:
         last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
+                _t0 = time.perf_counter()
                 resp = httpx.request(method, url, headers=self._headers(), params=params, json=json, timeout=self.timeout)
+                junction_request_seconds.labels(method=method).observe(time.perf_counter() - _t0)
                 if resp.status_code in _RETRY_STATUS and attempt < self.max_retries:
                     logger.warning("Junction %s %s → %s (retry %s/%s)", method, url, resp.status_code, attempt, self.max_retries)
                     time.sleep(self.backoff_base * (2 ** (attempt - 1)))

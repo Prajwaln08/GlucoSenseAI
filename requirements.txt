@@ -36,6 +36,7 @@ fastapi==0.111.0
 uvicorn[standard]==0.30.1
 pydantic==2.7.4
 python-jose[cryptography]==3.3.0
+cryptography==43.0.3  # field-level encryption at rest (src/utils/crypto.py)
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1  # 4.1+ breaks passlib 1.7.4
 python-multipart==0.0.9
