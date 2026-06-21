@@ -1,0 +1,104 @@
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# ── Virtual envs ─────────────────────────────────────────
+env/
+venv/
+.venv/
+ENV/
+.conda/
+
+# ── Jupyter ───────────────────────────────────────────────
+.ipynb_checkpoints/
+# Clear outputs before committing notebooks
+# notebooks/*.ipynb  ← do NOT ignore — commit empty-output notebooks
+
+# ── Data — DVC only, never git ────────────────────────────
+data/raw/
+data/processed/
+*.csv
+*.parquet
+*.json.gz
+
+# ── Models — DVC only, never git ─────────────────────────
+models/population/
+models/individual/
+models/virtual/
+*.pkl
+*.pt
+*.onnx
+*.h5
+*.pb
+# Keep registry.json (small, human-readable — always commit)
+!models/registry.json
+
+# ── MLflow ────────────────────────────────────────────────
+# mlflow/ is the bind-mount dir for the Docker MLflow server.
+# Keep the dir itself (via mlflow/.gitkeep) but ignore all runtime content.
+mlflow/mlflow.db
+mlflow/artifacts/
+mlruns/
+mlflow.db
+mlartifacts/
+
+# ── PyTorch Lightning (NeuralProphet training logs) ───────
+lightning_logs/
+
+# ── Secrets — NEVER in git ────────────────────────────────
+.env
+secrets/
+*.pem
+*.key
+firebase*.json
+service_account*.json
+
+# ── Reports / figures — safe to commit (small PNGs) ──────
+# reports/figures/ intentionally NOT ignored
+
+# ── Node / Frontend ──────────────────────────────────────
+node_modules/
+portal/node_modules/
+mobile/node_modules/
+portal/dist/
+portal/.env
+portal/.env.local
+mobile/.expo/
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# ── IDEs ─────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Testing ───────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── DVC ───────────────────────────────────────────────────
+# DVC pointer files (.dvc) are committed — do NOT ignore them
+/tmp/
+db.txt
+GlucoSenseAi.md
+raw.md
+.claude/
+model_structure.md
+.vercel

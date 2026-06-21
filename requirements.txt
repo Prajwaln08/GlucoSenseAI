@@ -1,0 +1,76 @@
+# ══════════════════════════════════════════════════════════
+# GlucoSense AI — Full Requirements
+# Install into glucosenseai conda env:
+#   conda activate glucosenseai
+#   pip install -r requirements.txt
+# ══════════════════════════════════════════════════════════
+
+# ── Environment ───────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Core ML ───────────────────────────────────────────────
+lightgbm==4.5.0
+xgboost==2.1.3
+scikit-learn==1.5.2
+optuna==3.6.1
+
+# ── Deep Learning ─────────────────────────────────────────
+torch==2.3.0
+pytorch-forecasting==1.0.0
+neuralforecast==1.7.3
+neuralprophet==0.9.0
+nixtla==0.5.1
+
+# ── Data ──────────────────────────────────────────────────
+pandas==2.2.3
+numpy==1.26.4
+pyarrow==15.0.2
+scipy==1.13.1
+
+# ── Google Drive download ─────────────────────────────────
+gdown==5.2.0
+
+# ── API ───────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1  # 4.1+ breaks passlib 1.7.4
+python-multipart==0.0.9
+
+# ── Database ──────────────────────────────────────────────
+sqlalchemy==2.0.30
+alembic==1.13.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# ── Task queue ────────────────────────────────────────────
+celery==5.4.0
+redis==5.0.6
+
+# ── MLflow ────────────────────────────────────────────────
+mlflow==2.13.2
+
+# ── DVC + Google Drive remote ─────────────────────────────
+dvc==3.51.0
+dvc-gdrive==3.0.1
+
+# ── Google Fit ────────────────────────────────────────────
+google-api-python-client==2.131.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# ── HTTP client (Junction / external APIs) ────────────────
+httpx==0.27.0
+
+# ── LLM ───────────────────────────────────────────────────
+ollama==0.2.1
+
+# ── Visualisation (training plots) ───────────────────────
+matplotlib==3.9.0
+seaborn==0.13.2
+
+# ── Monitoring & Logging ──────────────────────────────────
+loguru==0.7.2
+prometheus-fastapi-instrumentator==7.0.0

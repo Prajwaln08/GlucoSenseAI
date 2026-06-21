@@ -1,0 +1,191 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# GlucoSense AI — Compose (Phase 1 + Phase 2)
+#
+# Always-on services (docker compose up):
+#   postgres — application DB (users, prediction_logs, retrain_jobs)
+#   redis    — Celery broker + result backend
+#   mlflow   — MLflow tracking server  (http://localhost:5000)
+#   api      — FastAPI prediction API  (http://localhost:8000)
+#
+# On-demand (make targets):
+#   worker   — Celery retraining worker (profiles: ["worker"])
+#   train    — ML training container    (profiles: ["train"])
+#
+# Quick start:
+#   make api       → starts postgres + redis + mlflow + api
+#   make worker    → starts Celery worker (in addition)
+#   make build     → build training image
+#   make build-api → build serving image
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL — application database ─────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: glucosense-postgres
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-glucosense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB:       ${POSTGRES_DB:-glucosense}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-glucosense}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis — Celery broker + result backend ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: glucosense-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── MLflow Tracking Server ─────────────────────────────────────────────────
+  # Persists run metadata in SQLite (./mlflow/mlflow.db) and artefacts
+  # (plots, feature_cols.json) under ./mlflow/artifacts/.
+  # Both paths are bind-mounted so data survives container restarts.
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: glucosense-train:latest
+    container_name: glucosense-mlflow
+    command: >
+      mlflow server
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+        --host 0.0.0.0
+        --port 5000
+    ports:
+      - "5001:5000"   # host 5001 — macOS AirPlay occupies 5000
+    volumes:
+      - ./mlflow:/mlflow
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── FastAPI Serving Container ──────────────────────────────────────────────
+  # Runs the prediction API on port 8000.
+  # Pre-loads all 4 population models into RAM on startup (warm_cache).
+  # Models dir is bind-mounted so the API always uses the latest trained artefacts.
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.serve
+    image: glucosense-api:latest
+    container_name: glucosense-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro   # read-only — API never writes models
+      - ./uploads:/app/uploads    # chat attachments — writable
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONPATH: /app
+      # Override .env's localhost URL — inside Docker, postgres is reachable by service name
+      DATABASE_URL: postgresql://${POSTGRES_USER:-glucosense}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-glucosense}
+    env_file:
+      - .env
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Celery Worker — individual model retraining ────────────────────────────
+  # Not started by `docker compose up` — launch with `make worker`.
+  # Requires postgres + redis to be healthy before starting.
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.serve
+    image: glucosense-api:latest
+    container_name: glucosense-worker
+    command: >
+      celery -A src.tasks.celery_app worker
+        --loglevel=info
+        -Q glucosense
+        --concurrency=1
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data:ro
+    environment:
+      PYTHONPATH: /app
+      DATABASE_URL: postgresql://${POSTGRES_USER:-glucosense}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-glucosense}
+      BROKER_URL: redis://redis:6379/0
+      BACKEND_URL: redis://redis:6379/1
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - worker
+    restart: unless-stopped
+
+  # ── Training Container ─────────────────────────────────────────────────────
+  # Not started by `docker compose up` — always invoked via
+  # `docker compose run --rm train python scripts/...`
+  # Waits for MLflow to be healthy before running so logs are always captured.
+  train:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: glucosense-train:latest
+    container_name: glucosense-train
+    command: ["bash"]
+    stdin_open: true
+    tty: true
+    volumes:
+      # Data and model artefacts are bind-mounted so nothing is baked into the
+      # image and results survive between runs.
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+      # Share the MLflow volume so artefact paths resolve inside the container.
+      - ./mlflow:/mlflow
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-glucosense}
+      PYTHONPATH: /app
+    env_file:
+      - .env
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    # `profiles` keeps this out of `docker compose up` — only started explicitly.
+    profiles:
+      - train
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,48 @@
+# ── Version control ───────────────────────────────────────
+.git/
+.gitignore
+
+# ── Data — never bake into image, always bind-mount ──────
+data/
+*.csv
+*.parquet
+*.json.gz
+
+# ── Model artefacts — bind-mounted at runtime ─────────────
+models/
+mlflow/
+reports/
+
+# ── Python build artefacts ───────────────────────────────
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ── Virtual envs ─────────────────────────────────────────
+env/
+venv/
+.venv/
+.conda/
+
+# ── Jupyter ───────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Tests (not needed in training image) ─────────────────
+tests/
+
+# ── Dev config ───────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.claude/
+
+# ── macOS ────────────────────────────────────────────────
+.DS_Store
+
+# ── Docs ─────────────────────────────────────────────────
+*.md

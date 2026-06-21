@@ -1,0 +1,116 @@
+services:
+  # ── Web API ─────────────────────────────────────────────────────────────────
+  - type: web
+    name: glucosense-api
+    runtime: python
+    buildCommand: pip install -r requirements.serve.txt && alembic upgrade head
+    startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+      # Database — set in Render dashboard, do not commit the real value
+      - key: DATABASE_URL
+        sync: false
+
+      # Auth
+      - key: SECRET_KEY
+        sync: false
+      - key: ALGORITHM
+        value: "HS256"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: ADMIN_KEY
+        sync: false
+
+      # Junction wearable
+      - key: JUNCTION_BASE_URL
+        value: "https://api.sandbox.us.junction.com"
+      - key: JUNCTION_API_KEY
+        sync: false
+      - key: JUNCTION_WEBHOOK_SECRET
+        sync: false
+
+      # Celery broker (API needs this to dispatch retrain tasks)
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: glucosense-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: glucosense-redis
+          property: connectionString
+
+      # Model config
+      - key: MODEL_DIR
+        value: "models"
+      - key: RESAMPLE_INTERVAL_MINUTES
+        value: "15"
+      - key: DEFAULT_INPUT_WINDOW_HOURS
+        value: "6"
+      - key: DEFAULT_POPULATION_MODEL
+        value: "cgmacros"
+      - key: RMSE_DRIFT_ALERT_THRESHOLD_PCT
+        value: "20"
+      - key: MIN_ROWS_FOR_INDIVIDUAL_MODEL
+        value: "1344"
+
+      # Feature flags
+      - key: ENABLE_AI_RECOMMENDATIONS
+        value: "true"
+      - key: ENABLE_INDIVIDUAL_RETRAIN
+        value: "true"
+      - key: MAX_RETRAIN_QUEUE_SIZE
+        value: "5"
+      - key: ENABLE_SLEEP_FEATURES
+        value: "false"
+      - key: ENABLE_STRESS_FEATURES
+        value: "false"
+
+  # ── Celery worker ────────────────────────────────────────────────────────────
+  - type: worker
+    name: glucosense-worker
+    runtime: python
+    buildCommand: pip install -r requirements.serve.txt
+    startCommand: celery -A src.tasks.celery_app worker --loglevel=info -Q glucosense --concurrency=1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+      # Database — same value as the API
+      - key: DATABASE_URL
+        sync: false
+
+      # Celery broker
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: glucosense-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: glucosense-redis
+          property: connectionString
+
+      # Model config (used by retrain task)
+      - key: MODEL_DIR
+        value: "models"
+      - key: RESAMPLE_INTERVAL_MINUTES
+        value: "15"
+      - key: DEFAULT_INPUT_WINDOW_HOURS
+        value: "6"
+      - key: DEFAULT_POPULATION_MODEL
+        value: "cgmacros"
+      - key: RMSE_DRIFT_ALERT_THRESHOLD_PCT
+        value: "20"
+      - key: MAX_RETRAIN_QUEUE_SIZE
+        value: "5"
+
+  # ── Managed Redis (Celery broker + result backend) ───────────────────────────
+  - type: redis
+    name: glucosense-redis
+    plan: starter
+    maxmemoryPolicy: noeviction

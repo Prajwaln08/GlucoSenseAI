@@ -1,0 +1,183 @@
+"""
+GlucoSense AI — FastAPI serving layer (Phase 2).
+"""
+
+# Load .env before any src module is imported — env vars must be set
+# before auth/deps read os.environ.get(...) at module level.
+from dotenv import load_dotenv
+load_dotenv()
+
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from src.api.routers import auth, cgm, chat, doctor, food, health, predict, wearable
+from src.serving.model_loader import warm_cache
+from src.utils import get_logger
+
+log = get_logger(__name__)
+
+TAGS_METADATA = [
+    {
+        "name": "health",
+        "description": "Liveness check and registered model registry. No auth required.",
+    },
+    {
+        "name": "auth",
+        "description": (
+            "User registration and JWT authentication. "
+            "Use **POST /auth/token** to get a Bearer token, then click **Authorize** above."
+        ),
+    },
+    {
+        "name": "predict",
+        "description": (
+            "Blood glucose prediction (2 h and 3 h horizons). "
+            "Supports population models (CGMacros / Nature's Paper) and per-user individual models. "
+            "Authentication is optional — if a valid token is provided the prediction is logged and drift detection runs."
+        ),
+    },
+    {
+        "name": "food",
+        "description": "Meal logging — create, list, and delete food log entries. Requires authentication.",
+    },
+    {
+        "name": "chat",
+        "description": (
+            "Secure doctor–patient messaging. "
+            "Supports text messages and file attachments (JPEG, PNG, PDF ≤ 10 MB). "
+            "Requires authentication."
+        ),
+    },
+    {
+        "name": "doctor",
+        "description": (
+            "Doctor-portal endpoints: patient list, prediction history, retrain triggers, and retrain job status. "
+            "Requires a doctor account (`is_doctor=True`). "
+            "Create one via **POST /auth/register-doctor** using the `ADMIN_KEY`."
+        ),
+    },
+    {
+        "name": "wearable",
+        "description": (
+            "Junction wearable integration. "
+            "Connect 300+ devices (Dexcom, Fitbit, Garmin, Oura, Apple Health, etc.). "
+            "Use **POST /wearable/link-token** to get a device-connection URL, "
+            "**POST /wearable/sync** to pull the latest data, "
+            "and **POST /wearable/webhook** for real-time Junction push events."
+        ),
+    },
+    {
+        "name": "cgm",
+        "description": (
+            "CGM reading ingestion and query. "
+            "**POST /cgm/reading** receives real-time readings from xDRIP+ (no auth required). "
+            "**GET /cgm/readings** returns recent readings for portal display."
+        ),
+    },
+]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info("GlucoSense AI API starting — warming model cache …")
+    warm_cache()
+    log.info("Model cache warm. Ready to serve predictions.")
+    yield
+    log.info("GlucoSense AI API shutting down.")
+
+
+app = FastAPI(
+    title="GlucoSense AI",
+    description="""
+## Blood Glucose Prediction API
+
+Dual-model strategy: **population** (CGMacros / Nature's Paper datasets) + **individual** per-user models.
+Prediction horizons: **2 h** and **3 h** ahead.
+
+### Quick start
+
+1. **Register** a patient account → `POST /auth/register`
+2. **Login** → `POST /auth/token` (use the form, copy the `access_token`)
+3. Click **Authorize** (top-right) and paste `Bearer <token>`
+4. **Predict** → `POST /predict`
+5. **Log food** → `POST /food/log`
+
+### Doctor portal
+
+1. **Register a doctor** → `POST /auth/register-doctor` (needs `ADMIN_KEY`)
+2. **Login** → `POST /auth/token`
+3. Access `GET /doctor/patients`, trigger retrains, view prediction history
+
+### Datasets
+
+| Dataset | Wearable | CGM | Users |
+|---------|----------|-----|-------|
+| `cgmacros` | FitBit Sense | FreeStyle Libre | 45 |
+| `nature_paper` | Empatica E4 | Dexcom G6 | 7 |
+
+### Model performance (population)
+
+| Dataset | Horizon | Model | Test RMSE | Clarke A |
+|---------|---------|-------|-----------|---------|
+| nature_paper | 2h | XGBoost | 15.6 mg/dL | 98.0% |
+| nature_paper | 3h | XGBoost | 17.7 mg/dL | 97.9% |
+| cgmacros | 2h | LightGBM | 18.5 mg/dL | 96.2% |
+| cgmacros | 3h | XGBoost | 21.1 mg/dL | 95.4% |
+""",
+    version="2.0.0",
+    openapi_tags=TAGS_METADATA,
+    contact={
+        "name": "GlucoSense AI",
+        "email": "prajwalnerkar01@gmail.com",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+        "tryItOutEnabled": True,
+    },
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(predict.router, prefix="/predict")
+app.include_router(doctor.router)
+app.include_router(food.router)
+app.include_router(chat.router)
+app.include_router(wearable.router)
+app.include_router(cgm.router)
+
+_uploads_dir = Path("uploads")
+_uploads_dir.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+@app.exception_handler(KeyError)
+async def key_error_handler(request: Request, exc: KeyError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(FileNotFoundError)
+async def file_not_found_handler(request: Request, exc: FileNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
