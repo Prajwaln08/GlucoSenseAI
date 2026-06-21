@@ -10,7 +10,6 @@ POST /wearable/link-token        — create Junction user (if needed) + return l
 GET  /wearable/devices           — list connected wearable providers
 POST /wearable/sync              — pull last 7 days of glucose + activity from Junction
 GET  /wearable/activity          — fetch the patient's stored activity days
-POST /wearable/health-connect/sync — direct Android Health Connect daily activity upsert
 POST /wearable/webhook           — Junction webhook receiver (HMAC-SHA256 verified)
 """
 
@@ -30,7 +29,6 @@ from src.db.models import User, WearableActivity
 from src.integrations import cgm_router
 from src.integrations.ingest import ingest_cgm_readings, upsert_activity
 from src.integrations.junction import JunctionClient
-from src.integrations.schemas import ActivityIngest
 
 logger = logging.getLogger(__name__)
 
@@ -168,51 +166,6 @@ def get_my_activity(
         .order_by(WearableActivity.calendar_date.desc())
         .limit(min(days, 90))
         .all()
-    )
-
-
-# ── Health Connect direct sync ────────────────────────────────────────────────
-
-class HCDayInput(BaseModel):
-    calendar_date: str
-    steps: Optional[int] = None
-    calories_active: Optional[float] = None
-    calories_total: Optional[float] = None
-    distance_m: Optional[float] = None
-    hr_avg_bpm: Optional[float] = None
-    hr_min_bpm: Optional[float] = None
-    hr_max_bpm: Optional[float] = None
-    spo2_avg: Optional[float] = None
-    sleep_hours: Optional[float] = None
-    sleep_score: Optional[int] = None
-
-
-class HCSyncRequest(BaseModel):
-    days: list[HCDayInput]
-
-
-@router.post("/health-connect/sync", response_model=SyncResult)
-def sync_health_connect(
-    payload: HCSyncRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> SyncResult:
-    """Upsert daily activity read directly from Android Health Connect on the device."""
-    days = [
-        ActivityIngest(
-            user_id=current_user.id, calendar_date=d.calendar_date, provider="health_connect",
-            steps=d.steps, calories_active=d.calories_active, calories_total=d.calories_total,
-            distance_m=d.distance_m, hr_avg_bpm=d.hr_avg_bpm, hr_min_bpm=d.hr_min_bpm,
-            hr_max_bpm=d.hr_max_bpm, spo2_avg=d.spo2_avg, sleep_hours=d.sleep_hours,
-            sleep_score=d.sleep_score,
-        )
-        for d in payload.days
-    ]
-    saved = upsert_activity(db, days, commit=True)
-    return SyncResult(
-        glucose_readings_saved=0,
-        activity_days_saved=saved,
-        message=f"Health Connect: upserted {len(days)} days ({saved} new).",
     )
 
 
