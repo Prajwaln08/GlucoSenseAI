@@ -96,9 +96,4 @@ htmlcov/
 # ── DVC ───────────────────────────────────────────────────
 # DVC pointer files (.dvc) are committed — do NOT ignore them
 /tmp/
-db.txt
-GlucoSenseAi.md
-raw.md
 .claude/
-model_structure.md
-.vercel
