@@ -53,25 +53,31 @@ mlartifacts/
 # ── PyTorch Lightning (NeuralProphet training logs) ───────
 lightning_logs/
 
-# ── Secrets — NEVER in git ────────────────────────────────
+# ── Secrets / keys — NEVER in git ─────────────────────────
+# Env files (keep ONLY the .env.example template)
 .env
+.env.*
+!.env.example
 secrets/
+# Crypto material & API keys
 *.pem
 *.key
+*.p12
+*.pfx
+# Cloud / OAuth credential files
 firebase*.json
 service_account*.json
+client_secret*.json
+*credentials*.json
+gcp-*.json
+*-key.json
+.secrets.toml
 
 # ── Reports / figures — safe to commit (small PNGs) ──────
 # reports/figures/ intentionally NOT ignored
 
 # ── Node / Frontend ──────────────────────────────────────
 node_modules/
-portal/node_modules/
-mobile/node_modules/
-portal/dist/
-portal/.env
-portal/.env.local
-mobile/.expo/
 
 # ── OS ────────────────────────────────────────────────────
 .DS_Store

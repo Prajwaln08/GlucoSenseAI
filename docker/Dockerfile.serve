@@ -19,10 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Deps layer — rebuilds only when requirements.serve.txt changes
-COPY requirements.serve.txt .
+# Deps layer — rebuilds only when requirements.txt changes
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.serve.txt
+ && pip install --no-cache-dir -r requirements.txt
 
 # Source code only — models/data are bind-mounted at runtime
 COPY src/ src/

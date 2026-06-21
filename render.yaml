@@ -3,7 +3,7 @@ services:
   - type: web
     name: glucosense-api
     runtime: python
-    buildCommand: pip install -r requirements.serve.txt && alembic upgrade head
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
     startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
@@ -20,8 +20,6 @@ services:
         value: "HS256"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "60"
-      - key: ADMIN_KEY
-        sync: false
 
       # Junction wearable
       - key: JUNCTION_BASE_URL
@@ -73,7 +71,7 @@ services:
   - type: worker
     name: glucosense-worker
     runtime: python
-    buildCommand: pip install -r requirements.serve.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: celery -A src.tasks.celery_app worker --loglevel=info -Q glucosense --concurrency=1
     envVars:
       - key: PYTHON_VERSION
