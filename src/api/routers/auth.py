@@ -25,7 +25,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 SECRET_KEY   = os.environ.get("SECRET_KEY",  "change-this-in-production")
 ALGORITHM    = os.environ.get("ALGORITHM",   "HS256")
-ADMIN_KEY    = os.environ.get("ADMIN_KEY",   "change-this-admin-key")
 TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
 _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -68,22 +67,6 @@ class RegisterRequest(BaseModel):
     }
 
 
-class DoctorRegisterRequest(BaseModel):
-    email: str = Field(..., description="Doctor email address")
-    password: str = Field(..., description="Password")
-    admin_key: str = Field(..., description="Server ADMIN_KEY — set in .env as ADMIN_KEY")
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "email": "dr.smith@glucosense.ai",
-                "password": "DoctorPass456",
-                "admin_key": "glucosense-admin-2026",
-            }
-        }
-    }
-
-
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -98,9 +81,7 @@ class UserResponse(BaseModel):
     age: Optional[float]
     bmi: Optional[float]
     hba1c: Optional[float]
-    assigned_doctor_id: Optional[str]
     is_active: bool
-    is_doctor: bool
 
     model_config = {"from_attributes": True, "protected_namespaces": ()}
 
@@ -172,38 +153,3 @@ def login(
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)) -> User:
     return current_user
-
-
-@router.post("/register-doctor", response_model=UserResponse, status_code=201)
-def register_doctor(req: DoctorRegisterRequest, db: Session = Depends(get_db)) -> User:
-    """Create a doctor account. Requires the ADMIN_KEY from server config."""
-    if req.admin_key != ADMIN_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid admin key.",
-        )
-    if crud.get_user_by_email(db, req.email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered.",
-        )
-    user = User(
-        email=req.email,
-        hashed_password=_pwd_ctx.hash(req.password),
-        user_id="doctor",
-        dataset="cgmacros",
-        is_doctor=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@router.get("/admin/users", response_model=list[UserResponse])
-def list_users(
-    _current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> list[User]:
-    """Return all registered users ordered by signup date (newest first)."""
-    return db.query(User).order_by(User.created_at.desc()).all()

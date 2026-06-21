@@ -8,14 +8,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
-from src.api.routers import auth, cgm, chat, doctor, food, health, predict, wearable
+from src.api.routers import auth, cgm, food, health, predict, wearable
 from src.serving.model_loader import warm_cache
 from src.utils import get_logger
 
@@ -44,22 +42,6 @@ TAGS_METADATA = [
     {
         "name": "food",
         "description": "Meal logging — create, list, and delete food log entries. Requires authentication.",
-    },
-    {
-        "name": "chat",
-        "description": (
-            "Secure doctor–patient messaging. "
-            "Supports text messages and file attachments (JPEG, PNG, PDF ≤ 10 MB). "
-            "Requires authentication."
-        ),
-    },
-    {
-        "name": "doctor",
-        "description": (
-            "Doctor-portal endpoints: patient list, prediction history, retrain triggers, and retrain job status. "
-            "Requires a doctor account (`is_doctor=True`). "
-            "Create one via **POST /auth/register-doctor** using the `ADMIN_KEY`."
-        ),
     },
     {
         "name": "wearable",
@@ -107,12 +89,6 @@ Prediction horizons: **2 h** and **3 h** ahead.
 4. **Predict** → `POST /predict`
 5. **Log food** → `POST /food/log`
 
-### Doctor portal
-
-1. **Register a doctor** → `POST /auth/register-doctor` (needs `ADMIN_KEY`)
-2. **Login** → `POST /auth/token`
-3. Access `GET /doctor/patients`, trigger retrains, view prediction history
-
 ### Datasets
 
 | Dataset | Wearable | CGM | Users |
@@ -157,15 +133,9 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(predict.router, prefix="/predict")
-app.include_router(doctor.router)
 app.include_router(food.router)
-app.include_router(chat.router)
 app.include_router(wearable.router)
 app.include_router(cgm.router)
-
-_uploads_dir = Path("uploads")
-_uploads_dir.mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
 @app.exception_handler(ValueError)

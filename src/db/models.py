@@ -6,7 +6,6 @@ Tables:
     prediction_logs — every /predict call is recorded here for drift monitoring
     retrain_jobs    — Celery retrain task status tracking
     food_logs       — meal entries logged by patients
-    messages        — doctor–patient chat messages
 """
 
 import uuid
@@ -48,10 +47,7 @@ class User(Base):
     age             = Column(Float,   nullable=True)
     bmi             = Column(Float,   nullable=True)
     hba1c           = Column(Float,   nullable=True)
-    # Doctor assignment
-    assigned_doctor_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     is_active       = Column(Boolean, default=True,  nullable=False)
-    is_doctor       = Column(Boolean, default=False, nullable=False)
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
     # Junction wearable integration
     junction_user_id = Column(String, nullable=True, index=True)
@@ -65,12 +61,6 @@ class User(Base):
     food_logs       = relationship("FoodLog", back_populates="user",
                                    cascade="all, delete-orphan",
                                    foreign_keys="FoodLog.user_id_fk")
-    sent_messages     = relationship("Message", back_populates="sender",
-                                     foreign_keys="Message.sender_id",
-                                     cascade="all, delete-orphan")
-    received_messages = relationship("Message", back_populates="receiver",
-                                     foreign_keys="Message.receiver_id",
-                                     cascade="all, delete-orphan")
 
 
 class PredictionLog(Base):
@@ -121,8 +111,7 @@ class RetrainJob(Base):
     error_msg     = Column(Text,    nullable=True)
     # Versioning + audit
     artefact_dir  = Column(Text,    nullable=True)   # path to artifacts; enables model restore
-    triggered_by  = Column(String,  nullable=True)   # "doctor" | "auto_drift" | "patient_request"
-    notes         = Column(Text,    nullable=True)   # doctor's optional note
+    triggered_by  = Column(String,  nullable=True)   # "auto_drift" | "patient_request"
     version_tag   = Column(String,  nullable=True)   # "v1", "v2", … per user/dataset/horizon
 
     user = relationship("User", back_populates="retrain_jobs", foreign_keys=[user_id_fk])
@@ -149,24 +138,6 @@ class FoodLog(Base):
     notes        = Column(Text,   nullable=True)
 
     user = relationship("User", back_populates="food_logs", foreign_keys=[user_id_fk])
-
-
-class Message(Base):
-    """Doctor–patient chat message."""
-    __tablename__ = "messages"
-
-    id               = Column(String, primary_key=True, default=_uuid)
-    sender_id        = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    receiver_id      = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    body             = Column(Text, nullable=False)
-    sent_at          = Column(DateTime(timezone=True), default=_now, nullable=False, index=True)
-    read_at          = Column(DateTime(timezone=True), nullable=True)
-    attachment_url   = Column(String, nullable=True)   # /uploads/<filename>
-    attachment_type  = Column(String, nullable=True)   # image|pdf
-    attachment_name  = Column(String, nullable=True)   # original filename
-
-    sender   = relationship("User", back_populates="sent_messages",   foreign_keys=[sender_id])
-    receiver = relationship("User", back_populates="received_messages", foreign_keys=[receiver_id])
 
 
 class CgmReading(Base):

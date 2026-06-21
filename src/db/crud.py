@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from src.db.models import FoodLog, Message, PredictionLog, RetrainJob, User
+from src.db.models import FoodLog, PredictionLog, RetrainJob, User
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -145,14 +145,12 @@ def create_retrain_job(
     dataset: str,
     horizon: str,
     triggered_by: Optional[str] = None,
-    notes: Optional[str] = None,
 ) -> RetrainJob:
     job = RetrainJob(
         user_id_fk=user_id_fk,
         dataset=dataset,
         horizon=horizon,
         triggered_by=triggered_by,
-        notes=notes,
     )
     db.add(job)
     db.flush()
@@ -262,67 +260,3 @@ def get_food_logs(
     )
 
 
-# ── Messages ──────────────────────────────────────────────────────────────────
-
-def send_message(
-    db: Session,
-    sender_id: str,
-    receiver_id: str,
-    body: str,
-    attachment_url: Optional[str] = None,
-    attachment_type: Optional[str] = None,
-    attachment_name: Optional[str] = None,
-) -> Message:
-    msg = Message(
-        sender_id=sender_id,
-        receiver_id=receiver_id,
-        body=body,
-        attachment_url=attachment_url,
-        attachment_type=attachment_type,
-        attachment_name=attachment_name,
-    )
-    db.add(msg)
-    db.flush()
-    return msg
-
-
-def get_conversation(
-    db: Session,
-    user_a_id: str,
-    user_b_id: str,
-    limit: int = 100,
-) -> list[Message]:
-    return (
-        db.query(Message)
-        .filter(
-            (
-                (Message.sender_id == user_a_id) & (Message.receiver_id == user_b_id)
-            ) | (
-                (Message.sender_id == user_b_id) & (Message.receiver_id == user_a_id)
-            )
-        )
-        .order_by(Message.sent_at.asc())
-        .limit(limit)
-        .all()
-    )
-
-
-def mark_messages_read(
-    db: Session,
-    receiver_id: str,
-    sender_id: str,
-) -> None:
-    now = datetime.now(timezone.utc)
-    db.query(Message).filter(
-        Message.receiver_id == receiver_id,
-        Message.sender_id == sender_id,
-        Message.read_at.is_(None),
-    ).update({"read_at": now})
-
-
-def unread_count(db: Session, receiver_id: str) -> int:
-    return (
-        db.query(Message)
-        .filter(Message.receiver_id == receiver_id, Message.read_at.is_(None))
-        .count()
-    )
