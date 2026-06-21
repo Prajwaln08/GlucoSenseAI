@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}GlucoSense AI{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="h-full text-slate-800">
+{% if user %}
+<div class="min-h-full flex">
+  <!-- sidebar -->
+  <aside class="w-60 shrink-0 bg-white border-r border-slate-200 hidden md:flex md:flex-col">
+    <div class="px-5 py-5 border-b border-slate-100">
+      <a href="/dashboard" class="flex items-center gap-2 font-semibold text-rose-600 text-lg">
+        🩸 <span>GlucoSense&nbsp;AI</span>
+      </a>
+    </div>
+    <nav class="flex-1 px-3 py-4 space-y-1 text-sm">
+      {% set nav = [('/dashboard','Dashboard','📊'),('/predict','Predict','📈'),
+                    ('/food','Food log','🍽️'),('/connect','Connect','🔌'),
+                    ('/history','History','🗂️'),('/account','Account','⚙️')] %}
+      {% for href, label, icon in nav %}
+      <a href="{{ href }}"
+         class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100
+                {{ 'bg-rose-50 text-rose-700 font-medium' if request.url.path == href else 'text-slate-600' }}">
+        <span>{{ icon }}</span> {{ label }}
+      </a>
+      {% endfor %}
+    </nav>
+    <div class="px-3 py-4 border-t border-slate-100 text-sm">
+      <div class="px-3 pb-2 text-xs text-slate-400 truncate">{{ user.email }}</div>
+      <a href="/logout" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-100">
+        <span>🚪</span> Log out
+      </a>
+    </div>
+  </aside>
+  <!-- main -->
+  <main class="flex-1 min-w-0">
+    <header class="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b">
+      <a href="/dashboard" class="font-semibold text-rose-600">🩸 GlucoSense AI</a>
+      <a href="/logout" class="text-sm text-slate-500">Log out</a>
+    </header>
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% else %}
+<main class="min-h-full flex items-center justify-center px-4 py-12">
+  <div class="w-full max-w-md">
+    {% block auth_content %}{% endblock %}
+  </div>
+</main>
+{% endif %}
+</body>
+</html>

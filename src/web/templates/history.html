@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}History · GlucoSense AI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">History &amp; trends</h1>
+
+<div class="grid lg:grid-cols-2 gap-6">
+  <!-- glucose readings -->
+  <div>
+    <h2 class="font-semibold mb-3">Recent glucose ({{ readings|length }})</h2>
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden max-h-96 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <tr><th class="text-left px-4 py-2">When</th><th class="text-right px-4 py-2">mg/dL</th>
+            <th class="text-left px-4 py-2">Trend</th><th class="text-left px-4 py-2">Source</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for r in readings %}
+          <tr>
+            <td class="px-4 py-2 text-slate-500 whitespace-nowrap">{{ r.timestamp|fmt_dt }}</td>
+            <td class="px-4 py-2 text-right font-medium">{{ r.glucose_mgdl|round1 }}</td>
+            <td class="px-4 py-2 text-slate-500">{{ r.direction or '—' }}</td>
+            <td class="px-4 py-2 text-slate-500">{{ r.source or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">No readings yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- activity -->
+  <div>
+    <h2 class="font-semibold mb-3">Daily activity ({{ activity|length }})</h2>
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden max-h-96 overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+          <tr><th class="text-left px-4 py-2">Date</th><th class="text-right px-4 py-2">Steps</th>
+            <th class="text-right px-4 py-2">Rest HR</th><th class="text-right px-4 py-2">Sleep</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for a in activity %}
+          <tr>
+            <td class="px-4 py-2 text-slate-500">{{ a.calendar_date }}</td>
+            <td class="px-4 py-2 text-right">{{ a.steps or '—' }}</td>
+            <td class="px-4 py-2 text-right">{{ a.hr_resting_bpm|round1 if a.hr_resting_bpm else '—' }}</td>
+            <td class="px-4 py-2 text-right">{{ a.sleep_hours|round1 if a.sleep_hours else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">No watch data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<h2 class="font-semibold mt-8 mb-3">Forecast accuracy</h2>
+<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+      <tr><th class="text-left px-4 py-2">When</th><th class="text-left px-4 py-2">Horizon</th>
+        <th class="text-right px-4 py-2">Predicted</th><th class="text-right px-4 py-2">Actual</th>
+        <th class="text-right px-4 py-2">Abs error</th></tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for p in preds %}
+      <tr>
+        <td class="px-4 py-2 text-slate-500">{{ p.predicted_at|fmt_dt }}</td>
+        <td class="px-4 py-2">{{ p.horizon }}</td>
+        <td class="px-4 py-2 text-right">{{ p.horizon_glucose|round1 }}</td>
+        <td class="px-4 py-2 text-right">{{ p.actual_glucose|round1 if p.actual_glucose is not none else '—' }}</td>
+        <td class="px-4 py-2 text-right">{{ p.absolute_error|round1 if p.absolute_error is not none else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">No predictions yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Profile · GlucoSense AI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-1">Your profile</h1>
+<p class="text-slate-500 text-sm mb-6">Used to personalise predictions and coaching. You can change this anytime.</p>
+
+<form method="post" action="/onboarding" class="bg-white rounded-2xl border border-slate-200 p-6 space-y-5 max-w-2xl">
+  <div class="grid sm:grid-cols-2 gap-4">
+    <div>
+      <label class="block text-sm font-medium mb-1">Name</label>
+      <input name="name" value="{{ user.name or '' }}" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Gender</label>
+      <select name="gender" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white">
+        {% for g in ['', 'male', 'female', 'other', 'prefer_not_to_say'] %}
+        <option value="{{ g }}" {{ 'selected' if user.gender == g else '' }}>{{ g or '—' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Diabetes type</label>
+      <select name="diabetes_type" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white">
+        {% for t in ['', 'type1', 'type2', 'prediabetes', 'gestational', 'other'] %}
+        <option value="{{ t }}" {{ 'selected' if user.diabetes_type == t else '' }}>{{ t or '—' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Age</label>
+      <input name="age" type="number" step="1" value="{{ user.age|round(0,'floor')|int if user.age else '' }}" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Height (cm)</label>
+      <input name="height_cm" type="number" step="0.1" value="{{ user.height_cm or '' }}" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Weight (kg)</label>
+      <input name="weight_kg" type="number" step="0.1" value="{{ user.weight_kg or '' }}" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">HbA1c (%)</label>
+      <input name="hba1c" type="number" step="0.1" value="{{ user.hba1c or '' }}" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+    </div>
+  </div>
+  <div>
+    <label class="block text-sm font-medium mb-1">Medical history (optional)</label>
+    <textarea name="medical_history" rows="3" class="w-full rounded-lg border border-slate-300 px-3 py-2">{{ user.medical_history or '' }}</textarea>
+  </div>
+  <div class="flex gap-3">
+    <button class="bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg px-5 py-2.5">Save profile</button>
+    <a href="/dashboard" class="text-slate-500 px-4 py-2.5">Skip</a>
+  </div>
+</form>
+{% endblock %}

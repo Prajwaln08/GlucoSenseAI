@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Food log · GlucoSense AI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-1">Food log</h1>
+<p class="text-slate-500 text-sm mb-6">Log meals to enrich your glucose forecasts.</p>
+
+<div class="grid lg:grid-cols-3 gap-6">
+  <!-- add form -->
+  <form hx-post="/food/add" hx-target="#food-list" hx-swap="outerHTML"
+        hx-on::after-request="if(event.detail.successful) this.reset()"
+        class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 lg:col-span-1 h-fit">
+    <h2 class="font-semibold">Add a meal</h2>
+    <div>
+      <label class="block text-sm font-medium mb-1">Meal</label>
+      <select name="meal_type" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white">
+        {% for m in meal_types %}<option value="{{ m }}">{{ m|capitalize }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Description</label>
+      <input name="description" placeholder="e.g. Oats with banana" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-sm font-medium mb-1">Carbs (g)</label>
+        <input name="carbs_g" type="number" step="0.1" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+      <div><label class="block text-sm font-medium mb-1">Protein (g)</label>
+        <input name="protein_g" type="number" step="0.1" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+      <div><label class="block text-sm font-medium mb-1">Fat (g)</label>
+        <input name="fat_g" type="number" step="0.1" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+      <div><label class="block text-sm font-medium mb-1">Calories</label>
+        <input name="calories" type="number" step="1" class="w-full rounded-lg border border-slate-300 px-3 py-2"></div>
+    </div>
+    <button class="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg py-2.5">Add meal</button>
+  </form>
+
+  <!-- list -->
+  <div class="lg:col-span-2">
+    {% include "_food_list.html" %}
+  </div>
+</div>
+{% endblock %}

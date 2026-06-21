@@ -12,7 +12,15 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from src.db.models import FoodLog, PredictionLog, RetrainJob, User
+from src.db.models import (
+    CgmReading, FoodLog, PredictionLog, RetrainJob, User, WearableActivity,
+)
+
+# Profile fields a user may edit via onboarding/account (never email/password/dataset here).
+PROFILE_FIELDS = (
+    "name", "gender", "height_cm", "weight_kg", "diabetes_type",
+    "medical_history", "age", "bmi", "hba1c",
+)
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -257,6 +265,87 @@ def get_food_logs(
         .order_by(FoodLog.logged_at.desc())
         .limit(limit)
         .all()
+    )
+
+
+def get_food_log(db: Session, log_id: str, user_id_fk: str) -> Optional[FoodLog]:
+    return (
+        db.query(FoodLog)
+        .filter(FoodLog.id == log_id, FoodLog.user_id_fk == user_id_fk)
+        .first()
+    )
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+def update_user_profile(db: Session, user: User, **fields) -> User:
+    """Update editable profile fields only (PROFILE_FIELDS). Ignores unknown keys."""
+    for key, value in fields.items():
+        if key in PROFILE_FIELDS:
+            setattr(user, key, value)
+    db.flush()
+    return user
+
+
+def delete_user(db: Session, user: User) -> None:
+    """Hard-delete a user and ALL their data (privacy / right-to-delete).
+
+    prediction_logs / retrain_jobs / food_logs cascade via User relationships, but
+    cgm_readings and wearable_activity have no cascade relationship — delete them
+    explicitly first so the users-row delete is not blocked by their FKs.
+    """
+    db.query(CgmReading).filter(CgmReading.user_id == user.id).delete(synchronize_session=False)
+    db.query(WearableActivity).filter(WearableActivity.user_id_fk == user.id).delete(synchronize_session=False)
+    db.delete(user)
+
+
+# ── Dashboard / history reads ─────────────────────────────────────────────────
+
+def get_recent_cgm_readings(db: Session, user_id: str, limit: int = 288) -> list[CgmReading]:
+    return (
+        db.query(CgmReading)
+        .filter(CgmReading.user_id == user_id)
+        .order_by(CgmReading.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def get_latest_cgm_reading(db: Session, user_id: str) -> Optional[CgmReading]:
+    return (
+        db.query(CgmReading)
+        .filter(CgmReading.user_id == user_id)
+        .order_by(CgmReading.timestamp.desc())
+        .first()
+    )
+
+
+def get_recent_predictions(db: Session, user_id_fk: str, limit: int = 50) -> list[PredictionLog]:
+    return (
+        db.query(PredictionLog)
+        .filter(PredictionLog.user_id_fk == user_id_fk)
+        .order_by(PredictionLog.predicted_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def get_recent_activity(db: Session, user_id_fk: str, limit: int = 30) -> list[WearableActivity]:
+    return (
+        db.query(WearableActivity)
+        .filter(WearableActivity.user_id_fk == user_id_fk)
+        .order_by(WearableActivity.calendar_date.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def get_latest_activity(db: Session, user_id_fk: str) -> Optional[WearableActivity]:
+    return (
+        db.query(WearableActivity)
+        .filter(WearableActivity.user_id_fk == user_id_fk)
+        .order_by(WearableActivity.calendar_date.desc())
+        .first()
     )
 
 

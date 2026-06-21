@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Connect · GlucoSense AI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-1">Connect your data</h1>
+<p class="text-slate-500 text-sm mb-6">GlucoSense reads your glucose and watch data to forecast and coach.</p>
+
+<div class="space-y-4 max-w-2xl">
+  <!-- Junction (primary CGM) -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 flex items-start justify-between gap-4">
+    <div>
+      <div class="flex items-center gap-2">
+        <h2 class="font-semibold">Junction</h2>
+        <span class="text-xs bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5">primary CGM</span>
+      </div>
+      <p class="text-sm text-slate-500 mt-1">FreeStyle Libre, Dexcom and 300+ devices. The main way your glucose flows in.</p>
+      <div class="text-xs mt-2 {{ 'text-emerald-600' if junction_linked else 'text-slate-400' }}">
+        {{ '● Linked' if junction_linked else '○ Not linked yet' }}
+      </div>
+    </div>
+    <button disabled class="text-sm bg-slate-100 text-slate-400 rounded-lg px-4 py-2 cursor-not-allowed">
+      {{ 'Manage' if junction_linked else 'Link (Phase 3)' }}
+    </button>
+  </div>
+
+  <!-- Google Fit (watch) -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 flex items-start justify-between gap-4">
+    <div>
+      <div class="flex items-center gap-2">
+        <h2 class="font-semibold">Google Fit</h2>
+        <span class="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">watch</span>
+      </div>
+      <p class="text-sm text-slate-500 mt-1">All your Huawei-watch data — heart rate, steps, sleep, SpO₂.</p>
+      <div class="text-xs mt-2 text-slate-400">○ Not connected yet</div>
+    </div>
+    <button disabled class="text-sm bg-slate-100 text-slate-400 rounded-lg px-4 py-2 cursor-not-allowed">Connect (Phase 4)</button>
+  </div>
+
+  <!-- xDRIP (fallback) -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5">
+    <div class="flex items-center gap-2">
+      <h2 class="font-semibold">xDRIP+</h2>
+      <span class="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">fallback CGM</span>
+    </div>
+    <p class="text-sm text-slate-500 mt-1">
+      Automatic backup if Junction can't deliver readings. Point xDRIP+ at your personal
+      webhook URL (a secured per-user endpoint is set up in Phase 3).
+    </p>
+    <div class="text-xs mt-2 text-slate-400">○ Setup available in Phase 3</div>
+  </div>
+</div>
+
+<p class="mt-8 text-xs text-slate-400">Live connectors are wired in upcoming phases. This page shows your current link status.</p>
+{% endblock %}

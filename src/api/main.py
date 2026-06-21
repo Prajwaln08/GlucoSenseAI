@@ -7,13 +7,17 @@ GlucoSense AI — FastAPI serving layer (Phase 2).
 from dotenv import load_dotenv
 load_dotenv()
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from src.api.routers import auth, cgm, food, health, predict, wearable
+from src.api.routers import account, auth, cgm, food, health, predict, wearable
+from src.web.views import router as web_router
 from src.serving.model_loader import warm_cache
 from src.utils import get_logger
 
@@ -123,19 +127,36 @@ Prediction horizons: **2 h** and **3 h** ahead.
     lifespan=lifespan,
 )
 
+# Tightened CORS: explicit origins (required once cookies/credentials are allowed —
+# "*" is invalid with allow_credentials=True). Set CORS_ORIGINS in .env (comma-sep).
+_cors_origins = [
+    o.strip()
+    for o in os.environ.get(
+        "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
+    ).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ── JSON API routers ──────────────────────────────────────────────────────────
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(predict.router, prefix="/predict")
 app.include_router(food.router)
 app.include_router(wearable.router)
 app.include_router(cgm.router)
+app.include_router(account.router)
+
+# ── Server-rendered patient web UI + static assets ────────────────────────────
+_static_dir = Path(__file__).parent.parent / "web" / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+app.include_router(web_router)
 
 
 @app.exception_handler(ValueError)

@@ -10,7 +10,7 @@ FastAPI shared dependencies.
 import os
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -22,32 +22,47 @@ from src.db.session import get_db
 SECRET_KEY: str = os.environ.get("SECRET_KEY", "change-this-in-production")
 ALGORITHM:  str = os.environ.get("ALGORITHM", "HS256")
 
+# Name of the HttpOnly cookie the server-rendered web UI stores the JWT in.
+COOKIE_NAME = "access_token"
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 
+def _resolve_token(request: Request, bearer: Optional[str]) -> Optional[str]:
+    """Prefer the Authorization: Bearer header (API clients); fall back to the
+    HttpOnly cookie set by the web UI (browser). One auth path for both surfaces."""
+    if bearer:
+        return bearer
+    return request.cookies.get(COOKIE_NAME)
+
+
 def get_current_user(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """Decode JWT and return the authenticated User. Raises 401 if missing/invalid."""
-    if not token:
+    tok = _resolve_token(request, token)
+    if not tok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return _decode_token(token, db)
+    return _decode_token(tok, db)
 
 
 def get_optional_user(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     """Decode JWT and return User, or None if unauthenticated (no error raised)."""
-    if not token:
+    tok = _resolve_token(request, token)
+    if not tok:
         return None
     try:
-        return _decode_token(token, db)
+        return _decode_token(tok, db)
     except HTTPException:
         return None
 

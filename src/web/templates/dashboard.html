@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · GlucoSense AI{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-semibold">Hi{{ ' ' + user.name if user.name else '' }} 👋</h1>
+    <p class="text-slate-500 text-sm">Here's your latest glucose picture.</p>
+  </div>
+  <a href="/connect" class="text-sm bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-4 py-2">Connect a source</a>
+</div>
+
+<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  <!-- latest glucose -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Latest glucose</div>
+    {% if latest %}
+    <div class="mt-2 flex items-end gap-2">
+      <span class="text-4xl font-semibold">{{ latest.glucose_mgdl|round1 }}</span>
+      <span class="text-slate-400 mb-1">mg/dL</span>
+      {% if latest.direction %}<span class="mb-1 text-slate-500">{{ latest.direction }}</span>{% endif %}
+    </div>
+    <div class="text-xs text-slate-400 mt-1">{{ latest.timestamp|fmt_dt }}
+      {% if cgm_source %}· via <span class="font-medium text-slate-500">{{ cgm_source }}</span>{% endif %}</div>
+    {% else %}
+    <div class="mt-3 text-slate-400 text-sm">No readings yet. <a href="/connect" class="text-rose-600">Connect a CGM →</a></div>
+    {% endif %}
+  </div>
+
+  <!-- last prediction -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Last forecast</div>
+    {% if last_pred %}
+    <div class="mt-2 flex items-end gap-2">
+      <span class="text-4xl font-semibold">{{ last_pred.horizon_glucose|round1 }}</span>
+      <span class="text-slate-400 mb-1">mg/dL · {{ last_pred.horizon }}</span>
+    </div>
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      {% if last_pred.is_hypo_risk %}<span class="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">hypo risk</span>{% endif %}
+      {% if last_pred.is_hyper_risk %}<span class="text-xs bg-rose-100 text-rose-700 rounded-full px-2 py-0.5">hyper risk</span>{% endif %}
+      {% if last_pred.clarke_zone %}<span class="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">Clarke {{ last_pred.clarke_zone }}</span>{% endif %}
+      {% if last_pred.model_tier %}<span class="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">{{ last_pred.model_tier }}</span>{% endif %}
+    </div>
+    {% else %}
+    <div class="mt-3 text-slate-400 text-sm">No forecasts yet.</div>
+    {% endif %}
+  </div>
+
+  <!-- time in range -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Time in range (24h)</div>
+    {% if tir is not none %}
+    <div class="mt-2 text-4xl font-semibold">{{ tir }}%</div>
+    <div class="mt-2 h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div class="h-full bg-emerald-500" style="width: {{ tir }}%"></div>
+    </div>
+    <div class="text-xs text-slate-400 mt-1">{{ n_readings }} readings · target 70–180 mg/dL</div>
+    {% else %}
+    <div class="mt-3 text-slate-400 text-sm">No readings in range window.</div>
+    {% endif %}
+  </div>
+
+  <!-- activity snapshot -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-400">Activity (latest day)</div>
+    {% if activity %}
+    <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+      <div><div class="text-slate-400 text-xs">Steps</div><div class="font-semibold">{{ activity.steps or '—' }}</div></div>
+      <div><div class="text-slate-400 text-xs">Resting HR</div><div class="font-semibold">{{ activity.hr_resting_bpm|round1 if activity.hr_resting_bpm else '—' }}</div></div>
+      <div><div class="text-slate-400 text-xs">Sleep (h)</div><div class="font-semibold">{{ activity.sleep_hours|round1 if activity.sleep_hours else '—' }}</div></div>
+      <div><div class="text-slate-400 text-xs">SpO₂</div><div class="font-semibold">{{ activity.spo2_avg|round1 if activity.spo2_avg else '—' }}</div></div>
+    </div>
+    <div class="text-xs text-slate-400 mt-2">{{ activity.calendar_date }} · {{ activity.provider or 'watch' }}</div>
+    {% else %}
+    <div class="mt-3 text-slate-400 text-sm">No watch data yet. <a href="/connect" class="text-rose-600">Connect Google Fit →</a></div>
+    {% endif %}
+  </div>
+
+  <!-- recent food -->
+  <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:col-span-2">
+    <div class="flex items-center justify-between">
+      <div class="text-xs uppercase tracking-wide text-slate-400">Recent meals</div>
+      <a href="/food" class="text-xs text-rose-600">Log food →</a>
+    </div>
+    {% if recent_food %}
+    <ul class="mt-3 divide-y divide-slate-100 text-sm">
+      {% for f in recent_food[:5] %}
+      <li class="py-2 flex items-center justify-between">
+        <span>{{ f.meal_type|capitalize }}{% if f.description %} · {{ f.description }}{% endif %}</span>
+        <span class="text-slate-400 text-xs">{{ f.carbs_g|round1 if f.carbs_g else '—' }} g carbs</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="mt-3 text-slate-400 text-sm">No meals logged yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+<p class="mt-8 text-xs text-slate-400">Educational use only — not for clinical decisions.</p>
+{% endblock %}
