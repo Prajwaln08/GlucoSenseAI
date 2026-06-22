@@ -29,6 +29,8 @@ data/processed/
 *.parquet
 *.json.gz
 *.md
+# Markdown policy: keep ONLY the root README on GitHub; internal docs stay local-only.
+!/README.md
 
 # ── Models — DVC only, never git ─────────────────────────
 models/population/
