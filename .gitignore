@@ -28,6 +28,7 @@ data/processed/
 *.csv
 *.parquet
 *.json.gz
+*.md
 
 # ── Models — DVC only, never git ─────────────────────────
 models/population/
