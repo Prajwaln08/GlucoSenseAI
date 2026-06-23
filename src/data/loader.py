@@ -59,9 +59,20 @@ class NaturePaperLoader:
     def __init__(self, base_dir: Optional[Path] = None):
         self.base_dir = Path(base_dir) if base_dir else _NP_RAW_DIR
 
-    def load(self, user_id: str) -> dict[str, pd.DataFrame]:
+    def load(
+        self,
+        user_id: str,
+        skip: Optional[set[str]] = None,
+    ) -> dict[str, pd.DataFrame]:
         """
         Load all sources for a single user.
+
+        Args:
+            user_id: zero-padded participant id.
+            skip:    optional set of source keys to NOT read from disk (returned
+                     as empty DataFrames instead).  Used by the 10-min step
+                     pipeline to skip the multi-GB BVP files, which feed no
+                     feature — e.g. skip={"bvp"}.
 
         Returns:
             dict with keys: 'cgm', 'hr', 'eda', 'ibi', 'bvp', 'acc', 'temp', 'food'
@@ -74,17 +85,23 @@ class NaturePaperLoader:
                 "Run: python -m src.data.downloader --dataset nature_paper --users {user_id}"
             )
 
-        log.info(f"NP user {user_id}: loading raw files from {user_dir}")
+        skip = skip or set()
+        log.info(f"NP user {user_id}: loading raw files from {user_dir}"
+                 + (f" (skipping {sorted(skip)})" if skip else ""))
 
+        readers = {
+            "cgm":  lambda: self._load_dexcom(user_dir, user_id),
+            "hr":   lambda: self._load_signal(user_dir, user_id, "HR",   ["hr"]),
+            "eda":  lambda: self._load_signal(user_dir, user_id, "EDA",  ["eda"]),
+            "ibi":  lambda: self._load_signal(user_dir, user_id, "IBI",  ["ibi"]),
+            "bvp":  lambda: self._load_signal(user_dir, user_id, "BVP",  ["bvp"]),
+            "acc":  lambda: self._load_acc(user_dir, user_id),
+            "temp": lambda: self._load_signal(user_dir, user_id, "TEMP", ["temp"]),
+            "food": lambda: self._load_food_log(user_dir, user_id),
+        }
         return {
-            "cgm":  self._load_dexcom(user_dir, user_id),
-            "hr":   self._load_signal(user_dir, user_id, "HR",   ["hr"]),
-            "eda":  self._load_signal(user_dir, user_id, "EDA",  ["eda"]),
-            "ibi":  self._load_signal(user_dir, user_id, "IBI",  ["ibi"]),
-            "bvp":  self._load_signal(user_dir, user_id, "BVP",  ["bvp"]),
-            "acc":  self._load_acc(user_dir, user_id),
-            "temp": self._load_signal(user_dir, user_id, "TEMP", ["temp"]),
-            "food": self._load_food_log(user_dir, user_id),
+            key: (pd.DataFrame() if key in skip else read())
+            for key, read in readers.items()
         }
 
     def load_demographics(self) -> pd.DataFrame:

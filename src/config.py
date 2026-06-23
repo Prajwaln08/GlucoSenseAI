@@ -25,12 +25,16 @@ NP_DEMOGRAPHICS_FILE_ID   = "1CWpn3CzKRur9SynBAzkLiNwil00hmgM0"   # Demographics
 CGMACROS_BIO_FILE_ID      = "1vxK7eBApjjEgkjlQN8qNPCFwM-AY5G3S"   # bio.csv
 
 # ── Temporal settings ─────────────────────────────────────────────────────────
-RESAMPLE_INTERVAL       = "15min"      # target grid
-HORIZON_2H_STEPS        = 8           # 8 × 15 min = 2 h
-HORIZON_3H_STEPS        = 12          # 12 × 15 min = 3 h
-MAX_CGM_GAP_WINDOWS     = 3           # 3 × 15 min = 45 min — max forward-fill for CGM
-MAX_HR_GAP_WINDOWS      = 4           # 4 × 15 min = 60 min — max interpolation for HR (legacy)
-MAX_WATCH_FFILL_WINDOWS = 16          # 16 × 15 min = 4 h — ffill for HR/EDA/TEMP/METs gaps
+# LEGACY 15-min grid — used only by the soon-to-be-retired resampler/merger/
+# preprocessor modules and their tests.  The new step pipeline (step1..step5)
+# runs on the 10-min grid below.  RESAMPLE_INTERVAL is removed once the step
+# pipeline replaces those legacy modules (refactor Phase 3).
+RESAMPLE_INTERVAL       = "15min"      # legacy target grid
+HORIZON_2H_STEPS        = 8           # legacy: 8 × 15 min = 2 h
+HORIZON_3H_STEPS        = 12          # legacy: 12 × 15 min = 3 h
+MAX_CGM_GAP_WINDOWS     = 3           # legacy: 3 × 15 min = 45 min — ffill for CGM
+MAX_HR_GAP_WINDOWS      = 4           # legacy: 4 × 15 min = 60 min — interp for HR
+MAX_WATCH_FFILL_WINDOWS = 16          # legacy: 16 × 15 min = 4 h — ffill for watch gaps
 TRAIN_FRAC              = 0.60
 VAL_FRAC                = 0.20
 TEST_FRAC               = 0.20
@@ -39,6 +43,51 @@ TEST_FRAC               = 0.20
 TRAIN_DAYS              = 10
 VAL_DAYS                = 2
 TEST_DAYS               = 2
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Unified 10-min pipeline (refactor — see docs/pipeline_refactor_plan.md)
+# ══════════════════════════════════════════════════════════════════════════════
+# The new step1..step5 pipeline merges both datasets onto a single 10-min grid.
+# Everything downstream expresses windows in MINUTES and converts to step counts
+# with steps(), so the code is grid-agnostic and easy to re-tune.
+
+RESAMPLE_MIN            = 10          # minutes per grid step
+GRID                    = "10min"     # pandas offset alias for the 10-min grid
+
+
+def steps(minutes: int) -> int:
+    """Number of 10-min grid steps spanning `minutes` (floor division)."""
+    return minutes // RESAMPLE_MIN
+
+
+# Forecast horizons (minutes) — replaces the legacy 2h/3h naming.
+HORIZONS_MIN            = [30, 60, 90, 120]
+# {30: 3, 60: 6, 90: 9, 120: 12}
+HORIZON_STEPS_BY_MIN    = {m: steps(m) for m in HORIZONS_MIN}
+
+# Input-history windows (minutes) swept by the experiment matrix.
+INPUT_WINDOWS_MIN       = [60, 120, 180, 240, 360]
+# {60: 6, 120: 12, 180: 18, 240: 24, 360: 36}
+INPUT_WINDOW_STEPS_BY_MIN = {m: steps(m) for m in INPUT_WINDOWS_MIN}
+
+# ── Step 3 imputation gap limits (in grid steps) ──────────────────────────────
+CGM_FFILL_STEPS         = steps(30)   # 3  → carry CGM forward up to 30 min
+WATCH_FFILL_STEPS       = steps(60)   # 6  → carry watch signals forward up to 60 min
+WATCH_BFILL_STEPS       = steps(60)   # 6  → backfill the session start up to 60 min
+WATCH_LONG_GAP_STEPS    = steps(240)  # 24 → beyond this a watch gap stays NaN (+flag)
+BASELINE_STEPS          = steps(7 * 24 * 60)  # 1008 → 7-day relative-baseline window
+
+# ── Model-tier data gating (measured on the CGM target only) ──────────────────
+MIN_TRAIN_DAYS_CGM_ACTIVE = 6         # while_on_cgm needs ≥ 6 days of CGM to train
+# post_cgm / without_cgm use TRAIN_DAYS / VAL_DAYS / TEST_DAYS = 10 / 2 / 2 above.
+WATCH_MIN_COVERAGE      = 0.30        # ≥30% of CGM-wear rows must have a watch signal
+
+# ── Step 5 feature selection ──────────────────────────────────────────────────
+CORR_DROP_THRESHOLD     = 0.95        # drop one of any |corr| > this pair
+LOW_VAR_THRESHOLD       = 1e-8        # drop near-constant / zero-variance columns
+
+# ── Dataset namespacing (unified unique user id: "<prefix>-<raw_id>") ─────────
+DATASET_PREFIXES        = {"nature_paper": "np", "cgmacros": "cg"}
 
 # ── User allocation (locked — do not change) ──────────────────────────────────
 NP_TRAINING_USERS = ["003", "004", "005", "006", "007", "008", "009"]
