@@ -32,17 +32,18 @@ data/processed/
 # Markdown policy: keep ONLY the root README on GitHub; internal docs stay local-only.
 !/README.md
 
-# ── Models — DVC only, never git ─────────────────────────
-models/population/
-models/individual/
-models/virtual/
+# ── Models — only registry.json is committed ─────────────
+# Ignore ALL model artifacts (binaries, plots, metrics, configs, feature lists)
+# under models/, for every tier/scope/version. Keep only the human-readable
+# registry + the .gitkeep placeholder.
+models/*
+!models/.gitkeep
+!models/registry.json
 *.pkl
 *.pt
 *.onnx
 *.h5
 *.pb
-# Keep registry.json (small, human-readable — always commit)
-!models/registry.json
 
 # ── MLflow ────────────────────────────────────────────────
 # mlflow/ is the bind-mount dir for the Docker MLflow server.
@@ -76,8 +77,17 @@ gcp-*.json
 *-key.json
 .secrets.toml
 
-# ── Reports / figures — safe to commit (small PNGs) ──────
-# reports/figures/ intentionally NOT ignored
+# ── Reports — generated comparison output / leaderboards ──
+# Keep only the dir placeholders; ignore all generated content.
+reports/comparison/
+reports/figures/*
+!reports/figures/.gitkeep
+
+# ── Plots / graphs / figures — generated, never git ──────
+*.png
+*.jpg
+*.jpeg
+*.svg
 
 # ── Node / Frontend ──────────────────────────────────────
 node_modules/
