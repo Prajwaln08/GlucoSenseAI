@@ -89,24 +89,17 @@ db-migrate:
 db-down:
 	$(COMPOSE) stop postgres
 
-# ── Data ─────────────────────────────────────────────────────────────────────
-save-features:
-	$(TRAIN_RUN) python scripts/save_feature_matrices.py
+# ── Training (unified tier pipeline — see scripts/train.py) ───────────────────
+train-cgm-active:
+	$(TRAIN_RUN) python scripts/train.py --tier while_on_cgm
 
-# ── Training ─────────────────────────────────────────────────────────────────
-train-cgmacros:
-	$(TRAIN_RUN) python scripts/train_population.py \
-		--dataset cgmacros --horizon 2h 3h
+train-without-cgm:
+	$(TRAIN_RUN) python scripts/train.py --tier without_cgm
 
-train-np:
-	$(TRAIN_RUN) python scripts/train_population.py \
-		--dataset nature_paper --horizon 2h 3h
+train-post-cgm:
+	$(TRAIN_RUN) python scripts/train.py --tier post_cgm
 
-train-individual:
-	$(TRAIN_RUN) python scripts/train_individual.py \
-		--dataset cgmacros nature_paper
-
-train-all: train-cgmacros train-np train-individual
+train-all: train-cgm-active train-without-cgm train-post-cgm
 
 # ── Dev ───────────────────────────────────────────────────────────────────────
 test:
