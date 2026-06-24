@@ -85,6 +85,19 @@ def test_cohorts_group_by_availability_signature():
     assert sizes == [1, 2]
 
 
+def test_cohorts_skip_degenerate_small_cohorts():
+    frames = pd.concat([
+        _profile_frame("cg-031", "cgmacros", 14, avail=("hr", "mets", "calories_burned")),
+        _profile_frame("cg-032", "cgmacros", 14, avail=("hr", "mets", "calories_burned")),
+        _profile_frame("cg-033", "cgmacros", 14, avail=("hr", "mets", "calories_burned")),
+        _profile_frame("np-003", "nature_paper", 14, avail=("hr", "eda", "temp")),  # lone 1-user cohort
+    ])
+    profiles = el.profile_table(frames)
+    groups = el.cohorts(profiles, "post_cgm", min_users=3)
+    assert len(groups) == 1                          # the 1-user np cohort is dropped
+    assert list(groups.values())[0] == ["cg-031", "cg-032", "cg-033"]
+
+
 # ── Real prepare (guarded) ────────────────────────────────────────────────────
 
 def test_prepare_two_cgmacros_users_end_to_end():

@@ -21,8 +21,10 @@ val/test overfitting guard, and records the winner + a leaderboard.
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -49,6 +51,19 @@ from src.utils import get_logger
 log = get_logger(__name__)
 
 _PROTECT_CGM = {"glucose_mg_dl"}  # kept through selection for delta→absolute reconstruction
+
+
+@lru_cache(maxsize=1)
+def _git_sha() -> str:
+    """Short git commit the artifacts were trained from (for reproducibility)."""
+    try:
+        from src.config import ROOT_DIR
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(ROOT_DIR), stderr=subprocess.DEVNULL,
+        ).decode().strip() or "unknown"
+    except Exception:                              # noqa: BLE001 - git may be absent
+        return "unknown"
 
 
 @dataclass
@@ -324,7 +339,8 @@ class TierTrainer:
             json.dump({
                 "tier": self.tier, "scope": result.scope, "mode": self.mode,
                 "horizon_min": self.horizon_min, "model": result.model_name,
-                "version": self.version, "n_features": result.n_features,
+                "version": self.version, "git_sha": _git_sha(),
+                "n_features": result.n_features,
                 "held_out_test": not self._no_test,
                 "eval_split": "val" if self._no_test else "test",
                 "handles_nan": model.handles_nan, "family": model.family,
@@ -356,12 +372,12 @@ class TierTrainer:
 
     def _update_registry(self, result: TierResult):
         path = self.models_dir / "registry.json"
-        registry = json.loads(path.read_text()) if path.exists() else {"version": "2.0.0"}
+        registry = json.loads(path.read_text()) if path.exists() else {"schema": "2.0.0"}
         tiers = registry.setdefault("tiers", {})
         slot = (tiers.setdefault(self.tier, {})
                      .setdefault(result.scope, {})
                      .setdefault(f"{self.horizon_min}min", {}))
-        slot[result.model_name] = {
+        entry = {
             "version": self.version,
             "artefact_dir": str(result.artefact_dir.relative_to(self.models_dir.parent)),
             "val_rmse": result.val_rmse,
@@ -369,8 +385,17 @@ class TierTrainer:
             "mae": result.test_metrics.get("mae"),
             "clarke_a_pct": result.clarke_a,
             "n_features": result.n_features,
+            "git_sha": _git_sha(),
             "trained_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Keep a capped history of prior versions (on-disk version dirs are the
+        # full archive; this is the quick-reference list for rollback).
+        prev = slot.get(result.model_name)
+        history = list((prev or {}).get("history", []))
+        if prev and prev.get("version") != entry["version"]:
+            history = [{k: v for k, v in prev.items() if k != "history"}, *history][:10]
+        entry["history"] = history
+        slot[result.model_name] = entry
         registry["updated_at"] = datetime.now(timezone.utc).isoformat()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(registry, indent=2))

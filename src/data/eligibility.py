@@ -145,14 +145,25 @@ def cohort_key(profile: UserProfile) -> tuple[str, ...]:
 
 
 def cohorts(profiles: dict[str, UserProfile], tier: str,
-            allow_reserved: bool = False) -> dict[tuple[str, ...], list[str]]:
+            allow_reserved: bool = False,
+            min_users: int = 1) -> dict[tuple[str, ...], list[str]]:
     """
     Group eligible users by availability signature → one population model per
     cohort, each trained on the signals that cohort actually has.
+
+    Cohorts with fewer than `min_users` users are dropped (a population model
+    needs more than a handful of users; e.g. a single-user cohort is degenerate).
     """
     out: dict[tuple[str, ...], list[str]] = {}
     for uid in eligible_users(profiles, tier, allow_reserved=allow_reserved):
         out.setdefault(cohort_key(profiles[uid]), []).append(uid)
+
+    kept: dict[tuple[str, ...], list[str]] = {}
     for key, uids in out.items():
+        if len(uids) < min_users:
+            log.info(f"[{tier}] cohort {key or '()'} skipped — "
+                     f"{len(uids)} user(s) < min_users={min_users}")
+            continue
+        kept[key] = uids
         log.info(f"[{tier}] cohort {key or '()'}: {len(uids)} users")
-    return out
+    return kept
