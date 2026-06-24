@@ -71,12 +71,13 @@ def test_demographics_carried_constant():
 
 # ── Clinical clipping ─────────────────────────────────────────────────────────
 
-def test_clinical_clip_glucose_out_of_range_to_nan():
+def test_clinical_clip_glucose_clipped_to_bounds():
     df = pd.DataFrame({"glucose_mg_dl": [500.0, 120.0, 10.0]})
     out = s2.clinical_clip(df)
-    assert np.isnan(out["glucose_mg_dl"].iloc[0])   # 500 > 400
-    assert out["glucose_mg_dl"].iloc[1] == 120.0
-    assert np.isnan(out["glucose_mg_dl"].iloc[2])   # 10 < 40
+    assert out["glucose_mg_dl"].iloc[0] == 400.0   # 500 -> upper bound (not NaN)
+    assert out["glucose_mg_dl"].iloc[1] == 120.0   # in range
+    assert out["glucose_mg_dl"].iloc[2] == 40.0    # 10 -> lower bound (not NaN)
+    assert out["glucose_mg_dl"].notna().all()      # nothing nulled
 
 
 def test_clinical_clip_food_capped_not_nulled():

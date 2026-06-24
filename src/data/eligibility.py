@@ -36,8 +36,10 @@ log = get_logger(__name__)
 
 # Per-tier day split (train / val / test).  Eligibility needs the sum.
 TIER_CONFIG: dict[str, dict] = {
+    # while_on_cgm has NO held-out test split: the real test is the live incoming
+    # CGM stream (predictions are compared against new readings online). 6 train + 2 val.
     "while_on_cgm": {"mode": "cgm_active", "train_days": MIN_TRAIN_DAYS_CGM_ACTIVE,
-                     "val_days": VAL_DAYS, "test_days": TEST_DAYS},
+                     "val_days": VAL_DAYS, "test_days": 0},
     "post_cgm":     {"mode": "post_cgm",   "train_days": TRAIN_DAYS,
                      "val_days": VAL_DAYS, "test_days": TEST_DAYS},
     "without_cgm":  {"mode": "post_cgm",   "train_days": TRAIN_DAYS,

@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.inspection import permutation_importance
+from sklearn.model_selection import ParameterGrid
 from sklearn.preprocessing import StandardScaler
 
 from src.config import (
@@ -94,20 +95,30 @@ class TierTrainer:
         self.models_dir = Path(models_dir)
         self.reports_dir = Path(reports_dir) if reports_dir else REPORTS_DIR
         self.version = version or "v" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self._no_test = False   # set per-run: True when the tier has no held-out test
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def train_model(self, table: pd.DataFrame, model_name: str, scope: str,
-                    save: bool = True) -> TierResult:
-        """Train one model for this tier/horizon on a prepared feature table."""
+                    save: bool = True, params: Optional[dict] = None) -> TierResult:
+        """Train one model for this tier/horizon on a prepared feature table.
+
+        `params` overrides the model's default hyperparameters (used after a
+        tuning sweep to refit the winning combination).
+        """
         train_df, val_df, test_df = self._split(table)
 
         X_tr, y_tr = get_xy(train_df, self.horizon_min, self.mode)
         X_va, y_va = get_xy(val_df,   self.horizon_min, self.mode)
         X_te, y_te = get_xy(test_df,  self.horizon_min, self.mode)
-        if len(X_tr) == 0 or len(X_va) == 0 or len(X_te) == 0:
-            raise RuntimeError(f"{scope}: empty split (train={len(X_tr)}, "
-                               f"val={len(X_va)}, test={len(X_te)}).")
+        if len(X_tr) == 0 or len(X_va) == 0:
+            raise RuntimeError(f"{scope}: empty train/val split "
+                               f"(train={len(X_tr)}, val={len(X_va)}).")
+        # Tiers with test_days == 0 (while_on_cgm) keep no held-out test — the live
+        # CGM stream is the real test, so we evaluate on the validation split.
+        self._no_test = len(X_te) == 0
+        if self._no_test:
+            X_te, y_te = X_va.copy(), y_va.copy()
 
         # ── Step 5: feature selection on TRAIN only ───────────────────────────
         protect = _PROTECT_CGM if self.mode == "cgm_active" else set()
@@ -118,7 +129,7 @@ class TierTrainer:
         cur_va = X_va["glucose_mg_dl"].to_numpy() if self.mode == "cgm_active" else None
         cur_te = X_te["glucose_mg_dl"].to_numpy() if self.mode == "cgm_active" else None
 
-        model = get_glucose_model(model_name)
+        model = get_glucose_model(model_name, **(params or {}))
         model.requires_cgm = (self.mode == "cgm_active")
         model.predicts_absolute_or_delta = "delta" if self.mode == "cgm_active" else "absolute"
         model.prediction_horizon = self.horizon_min
@@ -167,13 +178,80 @@ class TierTrainer:
                  f"ClarkeA={result.clarke_a:.1f}%")
         return result
 
+    def tune_model(self, table: pd.DataFrame, model_name: str, scope: str,
+                   save: bool = True) -> TierResult:
+        """
+        Grid-search a model's SEARCH_SPACE (≤27 combos), rank every combination on
+        the validation split (Clarke gate, then lowest RMSE), write a ranked
+        tuning leaderboard, then refit + save the winning combination.
+        """
+        space = get_glucose_model(model_name).search_space()
+        if not space:
+            log.info(f"[{scope}] {model_name}: no search space — single fit.")
+            return self.train_model(table, model_name, scope, save=save)
+
+        # Prepare train/val once; validation is the ranking signal.
+        train_df, val_df, _ = self._split(table)
+        X_tr, y_tr = get_xy(train_df, self.horizon_min, self.mode)
+        X_va, y_va = get_xy(val_df,   self.horizon_min, self.mode)
+        if len(X_tr) == 0 or len(X_va) == 0:
+            raise RuntimeError(f"{scope}: empty train/val for tuning {model_name}.")
+
+        protect = _PROTECT_CGM if self.mode == "cgm_active" else set()
+        selector = fit_feature_selector(X_tr, protect=protect)
+        X_tr, X_va = selector.transform(X_tr), selector.transform(X_va)
+        cur_va = X_va["glucose_mg_dl"].to_numpy() if self.mode == "cgm_active" else None
+
+        # NaN policy depends only on the model family (constant across the grid).
+        if not get_glucose_model(model_name).handles_nan:
+            imp = SimpleImputer(strategy="median")
+            X_tr = pd.DataFrame(imp.fit_transform(X_tr), columns=X_tr.columns, index=X_tr.index)
+            X_va = pd.DataFrame(imp.transform(X_va),     columns=X_va.columns, index=X_va.index)
+            sc = StandardScaler()
+            X_tr = pd.DataFrame(sc.fit_transform(X_tr), columns=X_tr.columns, index=X_tr.index)
+            X_va = pd.DataFrame(sc.transform(X_va),     columns=X_va.columns, index=X_va.index)
+
+        grid = list(ParameterGrid(space))
+        log.info(f"[{self.tier}/{scope}/{self.horizon_min}min] tuning {model_name}: "
+                 f"{len(grid)} combinations")
+        scored: list[tuple[dict, float, float]] = []   # (params, val_rmse, clarke_a)
+        for combo in grid:
+            try:
+                m = get_glucose_model(model_name, **combo)
+                m.fit(X_tr, y_tr)
+                abs_true, abs_pred = self._to_absolute(m.predict(X_va), y_va, cur_va)
+                mtr = compute_metrics(abs_true, abs_pred, label="")
+                scored.append((combo, mtr["rmse"], mtr["clarke_a_pct"]))
+            except Exception as exc:               # noqa: BLE001
+                log.warning(f"  combo {combo} failed: {exc}")
+
+        if not scored:
+            raise RuntimeError(f"{scope}: all tuning combos failed for {model_name}.")
+
+        # Rank: prefer Clarke ≥ floor, then lowest val RMSE. Recover params from the
+        # ORIGINAL combo dicts (correct types — None / tuples survive intact).
+        passing = [s for s in scored if s[2] >= SELECTOR_MIN_CLARKE_A]
+        pool = passing or scored
+        best_params, best_rmse, best_clarke = min(pool, key=lambda s: s[1])
+
+        if save:
+            self._write_tuning_leaderboard(scope, model_name, scored, best_params)
+        log.info(f"[{self.tier}/{scope}/{self.horizon_min}min] {model_name} best: "
+                 f"{best_params}  val_RMSE={best_rmse:.2f} ClarkeA={best_clarke:.1f}%")
+
+        # Refit the winning combination on the full split + save the artifact bundle.
+        return self.train_model(table, model_name, scope, save=save, params=best_params)
+
     def select_best(self, table: pd.DataFrame, model_names: list[str], scope: str,
-                    save: bool = True) -> tuple[Optional[TierResult], list[TierResult]]:
-        """Train each model, apply the clinical filters, return (winner, all)."""
+                    save: bool = True, tune: bool = False
+                    ) -> tuple[Optional[TierResult], list[TierResult]]:
+        """Train (or tune) each model, apply the clinical filters, return (winner, all)."""
         results: list[TierResult] = []
         for name in model_names:
             try:
-                results.append(self.train_model(table, name, scope, save=save))
+                r = (self.tune_model(table, name, scope, save=save) if tune
+                     else self.train_model(table, name, scope, save=save))
+                results.append(r)
             except Exception as exc:               # noqa: BLE001 - report and continue
                 log.warning(f"[{self.tier}/{scope}] {name} failed: {exc}")
 
@@ -247,6 +325,8 @@ class TierTrainer:
                 "tier": self.tier, "scope": result.scope, "mode": self.mode,
                 "horizon_min": self.horizon_min, "model": result.model_name,
                 "version": self.version, "n_features": result.n_features,
+                "held_out_test": not self._no_test,
+                "eval_split": "val" if self._no_test else "test",
                 "handles_nan": model.handles_nan, "family": model.family,
                 "model_params": model.get_params(),
                 "trained_at": datetime.now(timezone.utc).isoformat(),
@@ -309,6 +389,23 @@ class TierTrainer:
         _save_leaderboard_plot(df, out / "leaderboard.png",
                                title=f"{self.tier} | {scope} | {self.horizon_min}min")
 
+    def _write_tuning_leaderboard(self, scope, model_name, scored, best_params):
+        """Write a ranked CSV + plot of every hyperparameter combination tried."""
+        out = (self.reports_dir / "comparison" / self.tier / scope
+               / f"{self.horizon_min}min" / model_name)
+        out.mkdir(parents=True, exist_ok=True)
+        rows = []
+        for params, rmse, clarke in scored:
+            row = {k: (str(v) if (v is None or isinstance(v, (tuple, list))) else v)
+                   for k, v in params.items()}
+            row.update({"val_rmse": round(rmse, 4), "clarke_a_pct": round(clarke, 2),
+                        "winner": params == best_params})
+            rows.append(row)
+        df = pd.DataFrame(rows).sort_values("val_rmse").reset_index(drop=True)
+        df.to_csv(out / "tuning_leaderboard.csv", index=False)
+        _save_tuning_plot(df, out / "tuning_leaderboard.png",
+                          title=f"{self.tier} | {scope} | {self.horizon_min}min | {model_name}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Clinical selection + leaderboard plot
@@ -344,6 +441,26 @@ def _save_leaderboard_plot(df: pd.DataFrame, path: Path, title: str) -> None:
     ax2.barh(df["model"], df["clarke_a_pct"], color="seagreen")
     ax2.invert_yaxis(); ax2.set_xlabel("Clarke Zone A (%)"); ax2.set_title("Clarke A (higher better)")
     fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(path, dpi=110, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _save_tuning_plot(df: pd.DataFrame, path: Path, title: str) -> None:
+    """Bar chart of val RMSE for every hyperparameter combination (winner in red)."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+    labels = [f"#{i}" for i in range(len(df))]   # ranked order (best first)
+    colors = ["tomato" if w else "steelblue" for w in df["winner"]]
+    fig, ax = plt.subplots(figsize=(max(6, len(df) * 0.4), 4))
+    ax.bar(labels, df["val_rmse"], color=colors)
+    ax.set_xlabel("Combination (ranked best→worst; red = winner)")
+    ax.set_ylabel("Validation RMSE (mg/dL)")
+    ax.set_title(title)
     fig.tight_layout()
     fig.savefig(path, dpi=110, bbox_inches="tight")
     plt.close(fig)

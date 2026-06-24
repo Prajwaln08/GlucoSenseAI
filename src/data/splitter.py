@@ -218,7 +218,8 @@ def day_split(
         train_end=train.index[-1],
         val_start=val.index[0],
         val_end=val.index[-1],
-        test_start=test.index[0],
+        # test may be empty when test_days == 0 (e.g. the while_on_cgm tier).
+        test_start=test.index[0] if len(test) else None,
         n_train=len(train),
         n_val=len(val),
         n_test=len(test),

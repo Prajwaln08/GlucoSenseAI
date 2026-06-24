@@ -43,6 +43,9 @@ def main() -> None:
     ap.add_argument("--horizons", type=int, nargs="+", default=HORIZONS_MIN)
     ap.add_argument("--models", nargs="+", default=available_models())
     ap.add_argument("--datasets", nargs="+", default=["nature_paper", "cgmacros"])
+    ap.add_argument("--tune", action="store_true",
+                    help="grid-search each model's hyperparameters (≤27 combos) and "
+                         "write a tuning leaderboard before selecting the winner")
     ap.add_argument("--no-save", action="store_true", help="do not persist artifacts")
     args = ap.parse_args()
 
@@ -70,7 +73,8 @@ def main() -> None:
     for scope, table in targets:
         for h in args.horizons:
             trainer = TierTrainer(args.tier, horizon_min=h)
-            winner, _ = trainer.select_best(table, models, scope=scope, save=not args.no_save)
+            winner, _ = trainer.select_best(table, models, scope=scope,
+                                            save=not args.no_save, tune=args.tune)
             if winner:
                 log.info(f"[{args.tier}/{scope}/{h}min] winner={winner.model_name} "
                          f"test_RMSE={winner.test_rmse:.2f} ClarkeA={winner.clarke_a:.1f}%")

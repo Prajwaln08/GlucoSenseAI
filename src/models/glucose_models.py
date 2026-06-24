@@ -40,10 +40,18 @@ class _GlucoseModel(BaseModel):
     family: str = "tree"
     handles_nan: bool = True
     _DEFAULTS: dict = {}
+    # 3 values on the ~3 most impactful knobs → ≤27-combo grid for tuning.
+    # Anything not listed here stays at its _DEFAULTS value during a sweep.
+    SEARCH_SPACE: dict = {}
 
     def __init__(self, **kwargs):
         self._params = {**self._DEFAULTS, **kwargs}
         self._model = None
+
+    @classmethod
+    def search_space(cls) -> dict:
+        """Grid of candidate values per tuned hyperparameter (empty = no tuning)."""
+        return {k: list(v) for k, v in cls.SEARCH_SPACE.items()}
 
     def _make(self):
         raise NotImplementedError
@@ -85,6 +93,9 @@ class LightGBMGlucose(_GlucoseModel):
     _DEFAULTS = {"n_estimators": 400, "learning_rate": 0.05, "num_leaves": 63,
                  "subsample": 0.8, "colsample_bytree": 0.8, "reg_lambda": 1.0,
                  "random_state": 42, "n_jobs": -1, "verbose": -1}
+    SEARCH_SPACE = {"n_estimators": [300, 600, 1000],
+                    "learning_rate": [0.03, 0.05, 0.1],
+                    "num_leaves": [31, 63, 127]}
 
     def _make(self):
         import lightgbm as lgb
@@ -96,6 +107,9 @@ class XGBoostGlucose(_GlucoseModel):
     _DEFAULTS = {"n_estimators": 400, "learning_rate": 0.05, "max_depth": 6,
                  "subsample": 0.8, "colsample_bytree": 0.8, "reg_lambda": 1.0,
                  "random_state": 42, "n_jobs": -1, "verbosity": 0}
+    SEARCH_SPACE = {"n_estimators": [300, 600, 1000],
+                    "learning_rate": [0.03, 0.05, 0.1],
+                    "max_depth": [4, 6, 8]}
 
     def _make(self):
         import xgboost as xgb
@@ -106,6 +120,9 @@ class HistGBRGlucose(_GlucoseModel):
     name, family, handles_nan = "histgbr", "tree", True
     _DEFAULTS = {"max_iter": 400, "learning_rate": 0.05, "max_depth": None,
                  "l2_regularization": 1.0, "random_state": 42}
+    SEARCH_SPACE = {"max_iter": [300, 600, 1000],
+                    "learning_rate": [0.03, 0.05, 0.1],
+                    "max_depth": [None, 8, 16]}
 
     def _make(self):
         from sklearn.ensemble import HistGradientBoostingRegressor
@@ -117,6 +134,9 @@ class CatBoostGlucose(_GlucoseModel):
     _DEFAULTS = {"iterations": 500, "learning_rate": 0.05, "depth": 6,
                  "l2_leaf_reg": 3.0, "random_seed": 42, "verbose": False,
                  "allow_writing_files": False}
+    SEARCH_SPACE = {"iterations": [300, 600, 1000],
+                    "learning_rate": [0.03, 0.05, 0.1],
+                    "depth": [4, 6, 8]}
 
     def _make(self):
         from catboost import CatBoostRegressor
@@ -129,6 +149,8 @@ class ExtraTreesGlucose(_GlucoseModel):
     name, family, handles_nan = "extratrees", "tree", False
     _DEFAULTS = {"n_estimators": 400, "max_depth": None, "n_jobs": -1,
                  "random_state": 42}
+    SEARCH_SPACE = {"n_estimators": [300, 600, 1000],
+                    "max_depth": [None, 12, 24]}
 
     def _make(self):
         from sklearn.ensemble import ExtraTreesRegressor
@@ -138,6 +160,7 @@ class ExtraTreesGlucose(_GlucoseModel):
 class RidgeGlucose(_GlucoseModel):
     name, family, handles_nan = "ridge", "linear", False
     _DEFAULTS = {"alpha": 1.0, "random_state": 42}
+    SEARCH_SPACE = {"alpha": [0.1, 1.0, 10.0]}
 
     def _make(self):
         from sklearn.linear_model import Ridge
@@ -149,6 +172,9 @@ class MLPGlucose(_GlucoseModel):
     _DEFAULTS = {"hidden_layer_sizes": (128, 64), "activation": "relu",
                  "alpha": 1e-3, "max_iter": 300, "early_stopping": True,
                  "random_state": 42}
+    SEARCH_SPACE = {"hidden_layer_sizes": [(64,), (128, 64), (256, 128)],
+                    "alpha": [1e-4, 1e-3, 1e-2],
+                    "max_iter": [200, 300, 500]}
 
     def _make(self):
         from sklearn.neural_network import MLPRegressor

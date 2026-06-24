@@ -32,10 +32,9 @@ train time (model tier, later phase).
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
-from src.config import CGM_FFILL_STEPS, WATCH_FFILL_STEPS, WATCH_BFILL_STEPS
+from src.config import WATCH_FFILL_STEPS, WATCH_BFILL_STEPS
 from src.utils import get_logger
 
 log = get_logger(__name__)
@@ -57,6 +56,9 @@ EVENT_COLS = [
     "meal_type_encoded", "amount_consumed_pct", "meal_flag",
 ]
 
+# Class C — static per-user demographics: carry the constant value to every row.
+DEMOGRAPHIC_COLS = ["age", "bmi", "hba1c", "gender"]
+
 
 def impute_user(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -70,23 +72,29 @@ def impute_user(df: pd.DataFrame) -> pd.DataFrame:
         present = col in df.columns and df[col].notna().any()
         df[f"{col}_available"] = int(present)
 
-    # ── Class A: glucose — bounded ffill only ─────────────────────────────────
-    if "glucose_mg_dl" in df.columns:
-        df["glucose_mg_dl"] = df["glucose_mg_dl"].ffill(limit=CGM_FFILL_STEPS)
+    # ── TARGET: glucose is NEVER imputed ──────────────────────────────────────
+    # The CGM glucose value is the target variable, so its real gaps stay NaN — no
+    # fabricated reading can ever become a training target. Rows with a missing
+    # target are dropped downstream (get_xy). (Glucose is already clipped to
+    # physiological bounds in Step 2.)
 
     # ── Class A: watch signals — bounded ffill + bfill (only if user has them) ─
     for col in WATCH_SIGNALS:
         if col not in df.columns or df[col].isna().all():
             continue  # structurally absent → leave NaN
-        s = df[col].ffill(limit=WATCH_FFILL_STEPS).bfill(limit=WATCH_BFILL_STEPS)
-        df[col] = s  # gaps longer than the bound remain NaN
+        df[col] = df[col].ffill(limit=WATCH_FFILL_STEPS).bfill(limit=WATCH_BFILL_STEPS)
+        # gaps longer than the bound remain NaN
 
-    # ── Class B: event columns — zero-fill ────────────────────────────────────
+    # ── Class B: event columns — zero-fill (absence = no event) ───────────────
     for col in EVENT_COLS:
         if col in df.columns:
             df[col] = df[col].fillna(0.0)
 
-    # ── Class C: demographics + glucose_rate_of_change left as-is ─────────────
+    # ── Class C: static demographics — ffill + bfill (constant per user) ──────
+    for col in DEMOGRAPHIC_COLS:
+        if col in df.columns:
+            df[col] = df[col].ffill().bfill()
+    # glucose_rate_of_change left as-is (derived in Step 4)
     return df
 
 

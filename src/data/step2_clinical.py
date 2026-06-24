@@ -129,7 +129,8 @@ def clinical_clip(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # Physiological → NaN outside bounds
+    # Physiological → CLIP to plausible bounds (keep the reading; never NaN it).
+    # A low value is clipped up to the lower bound, a high value down to the upper.
     for col, lo, hi in [
         ("glucose_mg_dl", GLUCOSE_MIN, GLUCOSE_MAX),
         ("hr",            HR_MIN,      HR_MAX),
@@ -137,11 +138,10 @@ def clinical_clip(df: pd.DataFrame) -> pd.DataFrame:
         ("temp",          TEMP_MIN,    TEMP_MAX),
     ]:
         if col in df.columns:
-            bad = (df[col] < lo) | (df[col] > hi)
-            n = int(bad.sum())
+            n = int(((df[col] < lo) | (df[col] > hi)).sum())
             if n:
-                log.debug(f"clinical_clip: {col} {n} value(s) outside [{lo},{hi}] → NaN")
-            df.loc[bad, col] = np.nan
+                log.debug(f"clinical_clip: {col} {n} value(s) clipped to [{lo},{hi}]")
+            df[col] = df[col].clip(lower=lo, upper=hi)
 
     # Glucose rate of change: clip to physiologically plausible ±5 mg/dL/min
     if "glucose_rate_of_change" in df.columns:

@@ -51,10 +51,12 @@ def test_post_cgm_requires_14_days():
     assert el.is_eligible(ok, "post_cgm")
 
 
-def test_while_on_cgm_needs_only_10_total_days():
-    p = el.profile_user(_profile_frame("cg-019", "cgmacros", days=10))
-    assert el.is_eligible(p, "while_on_cgm")        # 6+2+2
-    assert not el.is_eligible(p, "post_cgm")        # needs 14
+def test_while_on_cgm_needs_only_8_total_days():
+    p8 = el.profile_user(_profile_frame("cg-019", "cgmacros", days=8))
+    p7 = el.profile_user(_profile_frame("cg-021", "cgmacros", days=7))
+    assert el.is_eligible(p8, "while_on_cgm")       # 6 train + 2 val, no test
+    assert not el.is_eligible(p7, "while_on_cgm")   # < 8 days
+    assert not el.is_eligible(p8, "post_cgm")       # needs 14
 
 
 def test_watch_compulsory():

@@ -28,14 +28,16 @@ def _frame(values: dict, uid="cg-017", n=None) -> pd.DataFrame:
 
 # ── Glucose: bounded ffill only, no bfill ─────────────────────────────────────
 
-def test_glucose_ffill_bounded_no_bfill():
-    # leading NaN must stay NaN (no back-fill of fabricated history);
-    # a short gap after a real value is carried forward.
+def test_glucose_target_is_never_imputed():
+    # The CGM glucose value is the target — it must be left EXACTLY as-is
+    # (no ffill, no bfill). Real gaps stay NaN and are dropped at X/y time.
     g = [np.nan, 100.0, np.nan, np.nan, 130.0]
     out = impute_user(_frame({"glucose_mg_dl": g}))
-    assert np.isnan(out["glucose_mg_dl"].iloc[0])      # no bfill
-    assert out["glucose_mg_dl"].iloc[2] == 100.0       # ffill within bound
-    assert out["glucose_mg_dl"].iloc[3] == 100.0
+    res = out["glucose_mg_dl"].tolist()
+    assert np.isnan(res[0])
+    assert res[1] == 100.0
+    assert np.isnan(res[2]) and np.isnan(res[3])   # gap NOT filled
+    assert res[4] == 130.0
 
 
 # ── Watch signals: bounded ffill + bfill ──────────────────────────────────────
@@ -77,9 +79,14 @@ def test_event_columns_zero_filled():
 
 # ── Demographics: untouched ───────────────────────────────────────────────────
 
-def test_demographics_left_as_is():
-    out = impute_user(_frame({"hr": [70.0, 71.0], "bmi": [np.nan, np.nan]}))
-    assert out["bmi"].isna().all()       # unknown demographic stays NaN
+def test_demographics_ffill_bfill():
+    # a known static value (even with a gap) is carried to every row;
+    # a truly-absent demographic stays NaN.
+    out = impute_user(_frame({"hr": [70.0, 71.0, 72.0],
+                              "age": [np.nan, 40.0, np.nan],
+                              "bmi": [np.nan, np.nan, np.nan]}))
+    assert (out["age"] == 40.0).all()    # ffill + bfill fills the gap
+    assert out["bmi"].isna().all()       # truly unknown demographic stays NaN
 
 
 # ── Per-user isolation ────────────────────────────────────────────────────────

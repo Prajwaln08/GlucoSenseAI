@@ -102,6 +102,33 @@ def test_ridge_runs_through_imputer_no_nan_error(tmp_path):
 
 # ── Selector + leaderboard ────────────────────────────────────────────────────
 
+def test_tune_model_grid_and_winner(tmp_path):
+    # ridge has a 3-value grid (alpha) -> fast, deterministic.
+    table = _feature_table("cgm_active", days=12)
+    trainer = TierTrainer("while_on_cgm", 30, models_dir=tmp_path / "models",
+                          reports_dir=tmp_path / "reports", version="vTUNE")
+    res = trainer.tune_model(table, "ridge", scope="population/test")
+
+    lb = (tmp_path / "reports" / "comparison" / "while_on_cgm" / "population/test"
+          / "30min" / "ridge" / "tuning_leaderboard.csv")
+    assert lb.exists()
+    df = pd.read_csv(lb)
+    assert len(df) == 3                       # 3 alpha values
+    assert df["winner"].sum() == 1            # exactly one winner
+    # the refit winner's alpha is one of the grid values
+    cfg = json.loads((res.artefact_dir / "config.json").read_text())
+    assert cfg["model_params"]["alpha"] in (0.1, 1.0, 10.0)
+
+
+def test_search_spaces_are_small_grids():
+    from src.models.glucose_models import get_glucose_model
+    from sklearn.model_selection import ParameterGrid
+    for name in ("lightgbm", "xgboost", "histgbr", "extratrees", "ridge", "mlp"):
+        space = get_glucose_model(name).search_space()
+        assert space, f"{name} has no search space"
+        assert len(list(ParameterGrid(space))) <= 27, f"{name} grid too large"
+
+
 def test_select_best_writes_leaderboard(tmp_path):
     table = _feature_table("cgm_active", days=12)
     trainer = TierTrainer("while_on_cgm", 30, models_dir=tmp_path / "models",
