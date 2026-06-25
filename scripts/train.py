@@ -20,7 +20,7 @@ Examples
 import argparse
 from datetime import datetime, timezone
 
-from src.config import HORIZONS_MIN
+from src.config import HORIZONS_MIN, MODELS_DIR
 from src.data import eligibility as el
 from src.data import prepare as prep
 from src.models.glucose_models import available_models
@@ -32,6 +32,12 @@ log = get_logger("train")
 
 # A population model needs more than a couple of users; smaller cohorts are skipped.
 MIN_COHORT_USERS = 3
+
+
+def _slot_done(tier: str, scope: str, horizon: int, version: str, models: list[str]) -> bool:
+    """True if every requested model for this (scope, horizon, version) is on disk."""
+    base = MODELS_DIR / tier / scope / f"{horizon}min"
+    return all((base / m / version / "config.json").exists() for m in models)
 
 
 def _cohort_base(cohort_key: tuple[str, ...]) -> str:
@@ -98,6 +104,12 @@ def main() -> None:
 
     for scope, table in targets:
         for h in args.horizons:
+            # Resume support: if every requested model for this (scope, horizon,
+            # version) is already on disk, skip it. Re-running with the SAME
+            # --version then continues where an interrupted run left off.
+            if _slot_done(args.tier, scope, h, run_version, models):
+                log.info(f"[{args.tier}/{scope}/{h}min] already done ({run_version}) — skipping")
+                continue
             trainer = TierTrainer(args.tier, horizon_min=h, version=run_version)
             winner, _ = trainer.select_best(table, models, scope=scope,
                                             save=not args.no_save, tune=args.tune)
