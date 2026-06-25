@@ -44,11 +44,20 @@ def test_profile_counts_cgm_days_and_watch_coverage():
 
 # ── Gating ────────────────────────────────────────────────────────────────────
 
-def test_post_cgm_requires_14_days():
-    short = el.profile_user(_profile_frame("cg-017", "cgmacros", days=12))
-    ok    = el.profile_user(_profile_frame("cg-018", "cgmacros", days=14))
-    assert not el.is_eligible(short, "post_cgm")
-    assert el.is_eligible(ok, "post_cgm")
+def test_post_cgm_requires_12_days():
+    # post_cgm relaxed to 8/2/2 → needs >= 12 CGM days
+    short = el.profile_user(_profile_frame("cg-017", "cgmacros", days=11))
+    ok    = el.profile_user(_profile_frame("cg-018", "cgmacros", days=12))
+    assert not el.is_eligible(short, "post_cgm")     # 11 < 12
+    assert el.is_eligible(ok, "post_cgm")            # 12 = 8 + 2 + 2
+
+
+def test_without_cgm_requires_11_days():
+    # without_cgm relaxed to 7/2/2 → needs >= 11 CGM days
+    short = el.profile_user(_profile_frame("cg-017", "cgmacros", days=10))
+    ok    = el.profile_user(_profile_frame("cg-018", "cgmacros", days=11))
+    assert not el.is_eligible(short, "without_cgm")  # 10 < 11
+    assert el.is_eligible(ok, "without_cgm")         # 11 = 7 + 2 + 2
 
 
 def test_while_on_cgm_needs_only_8_total_days():

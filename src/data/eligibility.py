@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from src.config import (
-    MIN_TRAIN_DAYS_CGM_ACTIVE, TRAIN_DAYS, VAL_DAYS, TEST_DAYS,
+    MIN_TRAIN_DAYS_CGM_ACTIVE, VAL_DAYS, TEST_DAYS,
     WATCH_MIN_COVERAGE,
     CGMACROS_DEMO_USERS, NP_DB_USERS, NP_SKIP_USERS, _CGMACROS_SKIP,
 )
@@ -40,9 +40,13 @@ TIER_CONFIG: dict[str, dict] = {
     # CGM stream (predictions are compared against new readings online). 6 train + 2 val.
     "while_on_cgm": {"mode": "cgm_active", "train_days": MIN_TRAIN_DAYS_CGM_ACTIVE,
                      "val_days": VAL_DAYS, "test_days": 0},
-    "post_cgm":     {"mode": "post_cgm",   "train_days": TRAIN_DAYS,
+    # Day spans in this dataset top out ~11-13 days, so the virtual tiers are
+    # relaxed below the original 10/2/2 to keep enough users:
+    #   post_cgm    8/2/2 (>=12 days) — personalized, ~22 users
+    #   without_cgm 7/2/2 (>=11 days) — population, ~42 users
+    "post_cgm":     {"mode": "post_cgm",   "train_days": 8,
                      "val_days": VAL_DAYS, "test_days": TEST_DAYS},
-    "without_cgm":  {"mode": "post_cgm",   "train_days": TRAIN_DAYS,
+    "without_cgm":  {"mode": "post_cgm",   "train_days": 7,
                      "val_days": VAL_DAYS, "test_days": TEST_DAYS},
 }
 
