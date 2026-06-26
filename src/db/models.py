@@ -34,8 +34,9 @@ class User(Base):
     id              = Column(String, primary_key=True, default=_uuid)
     email           = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
-    user_id         = Column(String, nullable=False, index=True)  # "003", "019", etc.
-    dataset         = Column(String, nullable=False)              # "cgmacros" | "nature_paper"
+    # Research-participant linkage — NULL for real app users (only demo/replay accounts set these)
+    user_id         = Column(String, nullable=True, index=True)  # "003", "019", etc.
+    dataset         = Column(String, nullable=True)              # "cgmacros" | "nature_paper"
     # Profile
     name            = Column(String,  nullable=True)
     gender          = Column(String,  nullable=True)   # male|female|other|prefer_not_to_say
@@ -43,10 +44,15 @@ class User(Base):
     weight_kg       = Column(Float,   nullable=True)
     diabetes_type   = Column(String,  nullable=True)   # type1|type2|prediabetes|gestational|other
     medical_history = Column(Text,    nullable=True)
+    medications     = Column(Text,    nullable=True)   # free-text / JSON list of meds
     # Clinical demographics
     age             = Column(Float,   nullable=True)
     bmi             = Column(Float,   nullable=True)
     hba1c           = Column(Float,   nullable=True)
+    bp_systolic     = Column(Integer, nullable=True)
+    bp_diastolic    = Column(Integer, nullable=True)
+    bp_recorded_at  = Column(DateTime(timezone=True), nullable=True)
+    onboarding_complete = Column(Boolean, default=False, nullable=False)
     is_active       = Column(Boolean, default=True,  nullable=False)
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
     # Junction wearable integration
@@ -190,3 +196,17 @@ class WearableActivity(Base):
     sleep_score     = Column(Integer, nullable=True)  # sleep quality score (0–100, if available)
     provider        = Column(String,  nullable=True)
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+
+class Vitals(Base):
+    """User-logged vitals (BP, weight, manual glucose, HbA1c) — from the Home CTA or chat."""
+    __tablename__ = "vitals"
+
+    id           = Column(String, primary_key=True, default=_uuid)
+    user_id_fk   = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    kind         = Column(String, nullable=False)   # "bp" | "weight" | "glucose" | "hba1c"
+    value        = Column(Float,  nullable=True)     # weight / glucose / hba1c / single number
+    bp_systolic  = Column(Integer, nullable=True)
+    bp_diastolic = Column(Integer, nullable=True)
+    source       = Column(String, nullable=True)     # "home" | "chat"
+    recorded_at  = Column(DateTime(timezone=True), default=_now, nullable=False)

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Body, Button, Field, H1, Muted, Pill, Screen } from '@/components/ui';
+import { Body, Button, Field, H1, Muted, Screen } from '@/components/ui';
+import { Api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useColors } from '@/lib/theme';
 
@@ -19,11 +20,25 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF((s) => ({ ...s, [k]: v }));
 
+  const [error, setError] = useState<string | null>(null);
+
   async function finish() {
+    setError(null);
     setSaving(true);
     try {
-      // Phase 2: PUT /me/profile. For now just complete onboarding locally.
-      await completeOnboarding();
+      const num = (s: string) => (s.trim() ? Number(s) : undefined);
+      await Api.updateProfile({
+        name: f.name || undefined,
+        age: num(f.age), gender: f.gender || undefined,
+        height_cm: num(f.heightCm), weight_kg: num(f.weightKg),
+        bp_systolic: num(f.bpSys), bp_diastolic: num(f.bpDia),
+        hba1c: num(f.hba1c), diabetes_type: diabetes,
+        medical_history: f.conditions || undefined,
+        medications: f.medications || undefined,
+      });
+      completeOnboarding();
+    } catch {
+      setError('Could not save. Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -93,6 +108,7 @@ export default function Onboarding() {
           <Field label="Medical conditions (optional)" value={f.conditions} onChangeText={set('conditions')} placeholder="e.g. Hypertension" />
           <Field label="Medications (optional)" value={f.medications} onChangeText={set('medications')} placeholder="e.g. Metformin 500mg" />
 
+          {error && <Muted style={{ color: c.hyper, marginBottom: 8 }}>{error}</Muted>}
           <Button title="Finish setup" onPress={finish} loading={saving} style={{ marginTop: 8 }} />
         </ScrollView>
       </SafeAreaView>

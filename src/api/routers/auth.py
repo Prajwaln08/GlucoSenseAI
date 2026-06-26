@@ -39,8 +39,10 @@ _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class RegisterRequest(BaseModel):
     email: str = Field(..., description="Patient email address")
     password: str = Field(..., description="Password (min 6 chars recommended)")
-    user_id: str = Field(..., description="Dataset participant ID — e.g. '019' (CGMacros) or '003' (Nature's Paper)")
-    dataset: str = Field(..., description="'cgmacros' or 'nature_paper'")
+    # Research-participant linkage — OPTIONAL. Real app users omit these; only demo/replay
+    # accounts pass a dataset participant id to forecast against research data.
+    user_id: Optional[str] = Field(None, description="Dataset participant ID (demo/replay only)")
+    dataset: Optional[str] = Field(None, description="'cgmacros' or 'nature_paper' (demo/replay only)")
     name: Optional[str] = Field(None, description="Display name")
     gender: Optional[str] = Field(None, description="'male' | 'female' | 'other'")
     height_cm: Optional[float] = Field(None, description="Height in cm")
@@ -74,18 +76,22 @@ class RegisterRequest(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
-    user_id: str
-    dataset: str
-    name: Optional[str]
-    gender: Optional[str]
-    height_cm: Optional[float]
-    weight_kg: Optional[float]
-    diabetes_type: Optional[str]
-    medical_history: Optional[str]
-    age: Optional[float]
-    bmi: Optional[float]
-    hba1c: Optional[float]
-    is_active: bool
+    user_id: Optional[str] = None
+    dataset: Optional[str] = None
+    name: Optional[str] = None
+    gender: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    diabetes_type: Optional[str] = None
+    medical_history: Optional[str] = None
+    medications: Optional[str] = None
+    age: Optional[float] = None
+    bmi: Optional[float] = None
+    hba1c: Optional[float] = None
+    bp_systolic: Optional[int] = None
+    bp_diastolic: Optional[int] = None
+    onboarding_complete: bool = False
+    is_active: bool = True
 
     model_config = {"from_attributes": True, "protected_namespaces": ()}
 
@@ -104,10 +110,10 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> User:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered.",
         )
-    if req.dataset not in ("cgmacros", "nature_paper"):
+    if req.dataset is not None and req.dataset not in ("cgmacros", "nature_paper"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="dataset must be 'cgmacros' or 'nature_paper'.",
+            detail="dataset must be 'cgmacros' or 'nature_paper' (or omitted).",
         )
     user = crud.create_user(
         db,

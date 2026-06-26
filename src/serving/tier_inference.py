@@ -100,6 +100,48 @@ def predict_latest(dataset: str, participant_id: str, horizon_min: int = 60) -> 
     }
 
 
+def timeseries(dataset: str, participant_id: str, hours: int = 6) -> dict:
+    """
+    Build the dashboard series: the last `hours` of raw glucose + a forecast curve
+    (now → +30/60/90/120 min) for the participant. Shape matches the app's chart.
+    """
+    if dataset not in _COHORT:
+        raise ValueError(f"Unsupported dataset {dataset!r}.")
+    scope = _COHORT[dataset]
+    prepared = prep.prepare(mode=_MODE, users={dataset: [participant_id]})
+    df = prepared.table
+    df = df[df["glucose_mg_dl"].notna()].sort_index()
+    if df.empty:
+        return {"now": None, "range": {"low": 70, "high": 180}, "raw": [], "predicted": []}
+
+    recent = df.tail(hours * 6)   # 6 rows/hour on the 10-min grid
+    raw = [{"t": ts.isoformat(), "mgdl": round(float(g), 1)}
+           for ts, g in recent["glucose_mg_dl"].items()]
+
+    last_row = df.iloc[[-1]]
+    now = df.index[-1]
+    current = float(last_row["glucose_mg_dl"].iloc[0])
+    predicted = [{"t": now.isoformat(), "mgdl": round(current, 1), "horizon_min": 0}]
+    for h in (30, 60, 90, 120):
+        try:
+            model, feat, scaler, imputer = _load_bundle(scope, h, _winning_model(scope, h))
+            X = last_row.reindex(columns=feat)
+            if imputer is not None:
+                X = pd.DataFrame(imputer.transform(X), columns=feat, index=X.index)
+            if scaler is not None:
+                X = pd.DataFrame(scaler.transform(X), columns=feat, index=X.index)
+            delta = float(np.ravel(model.predict(X))[0])
+            predicted.append({
+                "t": (now + pd.Timedelta(minutes=h)).isoformat(),
+                "mgdl": round(current + delta, 1), "horizon_min": h,
+            })
+        except Exception as exc:                       # noqa: BLE001
+            log.debug(f"timeseries horizon {h} failed: {exc}")
+
+    return {"now": now.isoformat(), "range": {"low": 70, "high": 180},
+            "raw": raw, "predicted": predicted}
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _winning_model(scope: str, horizon_min: int) -> str:

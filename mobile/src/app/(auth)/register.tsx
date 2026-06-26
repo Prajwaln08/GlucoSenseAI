@@ -14,11 +14,15 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit() {
+    setError(null);
     setLoading(true);
     try {
-      await signUp(email.trim() || 'new@glucose.ai', password);
+      await signUp(email.trim(), password);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? 'Could not create account.');
     } finally {
       setLoading(false);
     }
@@ -37,6 +41,7 @@ export default function Register() {
           <Field label="Password" value={password} onChangeText={setPassword}
             secureTextEntry placeholder="Choose a password" />
 
+          {error && <Muted style={{ color: c.hyper, marginBottom: 8 }}>{error}</Muted>}
           <Button title="Create account" onPress={submit} loading={loading} style={{ marginTop: 6 }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 18, gap: 4 }}>

@@ -13,11 +13,15 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit() {
+    setError(null);
     setLoading(true);
     try {
-      await signIn(email.trim() || 'demo@glucose.ai', password);
+      await signIn(email.trim(), password);
+    } catch {
+      setError('Wrong email or password.');
     } finally {
       setLoading(false);
     }
@@ -36,6 +40,7 @@ export default function Login() {
           <Field label="Password" value={password} onChangeText={setPassword}
             secureTextEntry placeholder="••••••••" />
 
+          {error && <Muted style={{ color: c.hyper, marginBottom: 8 }}>{error}</Muted>}
           <Button title="Sign in" onPress={submit} loading={loading} style={{ marginTop: 6 }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 18, gap: 4 }}>
