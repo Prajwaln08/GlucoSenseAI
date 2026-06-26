@@ -114,3 +114,7 @@ htmlcov/
 # DVC pointer files (.dvc) are committed — do NOT ignore them
 /tmp/
 .claude/
+
+# Local dev SQLite databases
+*.db
+local_dev.db
