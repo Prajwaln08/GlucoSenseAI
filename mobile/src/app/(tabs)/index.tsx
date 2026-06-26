@@ -9,7 +9,7 @@ import { LogSheet } from '@/components/LogSheet';
 import { Body, Card, H1, H2, Muted, Pill, Screen } from '@/components/ui';
 import { syncHealthConnect } from '@/health/healthConnect';
 import { Api } from '@/lib/api';
-import { mockRecommendations, mockTimeseries } from '@/lib/mock';
+import { mockTimeseries } from '@/lib/mock';
 import { useColors } from '@/lib/theme';
 
 const HORIZONS = [30, 60, 90, 120];
@@ -23,6 +23,7 @@ export default function Home() {
   const [hcStatus, setHcStatus] = useState('Not connected');
 
   const { data, isLoading } = useQuery({ queryKey: ['timeseries'], queryFn: () => Api.timeseries(6) });
+  const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
 
   async function connectHealthConnect() {
     setSyncing(true);
@@ -85,10 +86,10 @@ export default function Home() {
           </Card>
 
           {/* B — coach recommendations (hidden when none) */}
-          {mockRecommendations.length > 0 && (
+          {!!recs?.length && (
             <View style={{ marginBottom: 14 }}>
               <H2>Coach suggestions</H2>
-              {mockRecommendations.map((r) => (
+              {recs.map((r) => (
                 <Card key={r.id} style={{ marginBottom: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <Ionicons name={r.kind === 'diet' ? 'restaurant' : 'walk'} size={16} color={c.accent} />

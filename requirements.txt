@@ -35,6 +35,7 @@ gdown==5.2.0
 # ── API ───────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
+anthropic>=0.40  # AI coach (server-side; key never ships in the app)
 pydantic==2.7.4
 python-jose[cryptography]==3.3.0
 cryptography==43.0.3  # field-level encryption at rest (src/utils/crypto.py)

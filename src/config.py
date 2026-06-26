@@ -10,6 +10,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Claude coach (server-side only — the mobile app never holds this key) ─────
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+COACH_MODEL       = os.getenv("COACH_MODEL", "claude-sonnet-4-6")
+COACH_MAX_TOKENS  = int(os.getenv("COACH_MAX_TOKENS", "1024"))
+
 # ── Project root ──────────────────────────────────────────────────────────────
 ROOT_DIR = Path(__file__).parent.parent
 DATA_RAW_DIR        = ROOT_DIR / "data" / "raw"

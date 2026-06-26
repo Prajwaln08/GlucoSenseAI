@@ -1,14 +1,13 @@
 """
-GlucoSense AI — AI Coach (RESERVED FOR A FUTURE PHASE — NOT BUILT YET).
+GlucoSense AI — AI Coach.
 
-This package is an intentional STUB. Per the project direction (directive #4),
-the AI chat/coach interface that gives food & activity suggestions over the
-user's own data is DEFERRED. Nothing here is wired into the API.
+Hybrid, safety-first (per the design in README.md):
+  - context.py — read-only snapshot of the user's state (the FACTS).
+  - rules.py   — deterministic safety flags + lifestyle recommendations (numbers
+                 computed in code; the LLM never invents them).
+  - tools.py   — log_food / log_vitals tool-use so the coach can record from chat.
+  - llm.py     — Claude client (server-side key only) with a graceful no-key fallback.
+  - service.py — orchestration + persistence (ChatMessage / Recommendation).
 
-When the AI phase begins (see docs/implementation_plan.md §7 / Phase 6):
-  - it will read EXISTING tables read-only (CgmReading / WearableActivity /
-    FoodLog) via the same query layer the web UI uses,
-  - no LLM dependency, router, or endpoint is added until then.
-
-See README.md in this directory for the deferred design.
+Mounted at /coach in the API. The mobile app holds NO key — it calls the backend.
 """

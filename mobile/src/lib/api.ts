@@ -45,6 +45,8 @@ export type Timeseries = {
   now: string | null; range: { low: number; high: number };
   raw: GlucosePoint[]; predicted: GlucosePoint[];
 };
+export type ChatTurn = { role: 'user' | 'assistant'; content: string };
+export type Recommendation = { id: string; kind: 'diet' | 'activity'; title: string; body: string };
 
 // ── Endpoints ───────────────────────────────────────────────────────────────
 export const Api = {
@@ -89,6 +91,18 @@ export const Api = {
     activity: { date: string; steps?: number; calories_active?: number; distance_m?: number; hr_avg_bpm?: number; spo2_avg?: number; sleep_hours?: number }[];
   }): Promise<{ cgm_inserted: number; activity_days: number }> {
     const { data } = await api.post('/health-connect/sync', payload);
+    return data;
+  },
+  async coachChat(message: string): Promise<{ reply: string; actions: any[] }> {
+    const { data } = await api.post('/coach/chat', { message });
+    return data;
+  },
+  async coachMessages(): Promise<ChatTurn[]> {
+    const { data } = await api.get('/coach/messages');
+    return data;
+  },
+  async recommendations(): Promise<Recommendation[]> {
+    const { data } = await api.get('/coach/recommendations');
     return data;
   },
 };

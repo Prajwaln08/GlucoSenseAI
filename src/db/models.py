@@ -210,3 +210,27 @@ class Vitals(Base):
     bp_diastolic = Column(Integer, nullable=True)
     source       = Column(String, nullable=True)     # "home" | "chat"
     recorded_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+
+class ChatMessage(Base):
+    """One turn in a user's coach conversation (persisted for history + context)."""
+    __tablename__ = "chat_messages"
+
+    id          = Column(String, primary_key=True, default=_uuid)
+    user_id_fk  = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    role        = Column(String, nullable=False)     # "user" | "assistant"
+    content     = Column(Text,   nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+
+class Recommendation(Base):
+    """Coach-generated diet/activity suggestion shown on the dashboard."""
+    __tablename__ = "recommendations"
+
+    id          = Column(String, primary_key=True, default=_uuid)
+    user_id_fk  = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    kind        = Column(String, nullable=False)     # "diet" | "activity"
+    title       = Column(String, nullable=False)
+    body        = Column(Text,   nullable=False)
+    active      = Column(Boolean, default=True, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=_now, nullable=False)

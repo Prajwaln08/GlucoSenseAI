@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from src.api.routers import account, auth, cgm, food, googlefit, health, mobile, predict, wearable
+from src.api.routers import account, auth, cgm, coach, food, googlefit, health, mobile, predict, wearable
 from src.web.views import router as web_router
 from src.serving.model_loader import warm_cache
 from src.utils import get_logger
@@ -168,6 +168,7 @@ app.include_router(cgm.router)
 app.include_router(googlefit.router)
 app.include_router(account.router)
 app.include_router(mobile.router)
+app.include_router(coach.router)
 
 # ── Server-rendered patient web UI + static assets ────────────────────────────
 _static_dir = Path(__file__).parent.parent / "web" / "static"
