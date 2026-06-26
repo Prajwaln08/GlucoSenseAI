@@ -2,7 +2,28 @@
 {% block title %}Predict · GlucoSense AI{% endblock %}
 {% block content %}
 <h1 class="text-2xl font-semibold mb-1">Glucose forecast</h1>
-<p class="text-slate-500 text-sm mb-6">2-hour and 3-hour predictions from your connected CGM + watch stream.</p>
+<p class="text-slate-500 text-sm mb-6">Live predictions from the trained CGM-active model for your cohort.</p>
+
+<form method="post" action="/predict/run"
+      class="bg-white rounded-2xl border border-slate-200 p-5 mb-6 flex flex-wrap items-end gap-3">
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-slate-400 mb-1">Forecast horizon</label>
+    <select name="horizon" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+      {% for h in horizons %}<option value="{{ h }}" {% if h == 60 %}selected{% endif %}>+{{ h }} min</option>{% endfor %}
+    </select>
+  </div>
+  <button type="submit"
+          class="bg-rose-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-rose-700">
+    Run forecast
+  </button>
+  <span class="text-xs text-slate-400">
+    from your linked {{ user.dataset }} participant ({{ user.user_id }})
+  </span>
+</form>
+
+{% if error %}
+<div class="bg-rose-50 text-rose-700 text-sm rounded-xl px-4 py-3 mb-6">{{ error }}</div>
+{% endif %}
 
 {% if latest_pred %}
 <div class="bg-white rounded-2xl border border-slate-200 p-6 mb-6">

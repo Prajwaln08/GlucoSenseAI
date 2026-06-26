@@ -197,14 +197,49 @@ def dashboard(request: Request, user: User = Depends(get_optional_user), db: Ses
     )
 
 
-# ── predict (read-only history; live forecasts run on the JSON API stream) ─────
+# ── predict (live forecasts from the trained tier models) ─────────────────────
 
 @router.get("/predict", response_class=HTMLResponse)
 def predict_page(request: Request, user: User = Depends(get_optional_user), db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=303)
+    from src.serving.tier_inference import available_horizons
     preds = crud.get_recent_predictions(db, user.id, limit=50)
-    return _page(request, "predict.html", user=user, preds=preds, latest_pred=(preds[0] if preds else None))
+    return _page(request, "predict.html", user=user, preds=preds,
+                 latest_pred=(preds[0] if preds else None),
+                 horizons=available_horizons())
+
+
+@router.post("/predict/run", response_class=HTMLResponse)
+def predict_run(
+    request: Request,
+    horizon: str = Form("60"),
+    user: User = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    from src.serving.tier_inference import available_horizons, predict_latest
+    error = None
+    try:
+        res = predict_latest(user.dataset, user.user_id, horizon_min=int(horizon))
+        crud.log_prediction(
+            db, user_id_fk=user.id, dataset=user.dataset,
+            horizon=res["horizon"], model_type=res["model_type"],
+            current_glucose=res["current_glucose"], horizon_glucose=res["horizon_glucose"],
+            clarke_zone=res["clarke_zone"], is_hypo_risk=res["is_hypo_risk"],
+            is_hyper_risk=res["is_hyper_risk"], n_readings=res["n_readings"],
+            model_tier=res["model_tier"], cgm_mode=res["cgm_mode"],
+            data_quality=res["data_quality"], readings_used=res["readings_used"],
+        )
+        db.commit()
+    except Exception as exc:                        # noqa: BLE001 - show a friendly message
+        db.rollback()
+        error = f"Could not generate a forecast: {exc}"
+    preds = crud.get_recent_predictions(db, user.id, limit=50)
+    return _page(request, "predict.html", user=user, preds=preds,
+                 latest_pred=(preds[0] if preds else None),
+                 horizons=available_horizons(), error=error)
 
 
 # ── food ──────────────────────────────────────────────────────────────────────

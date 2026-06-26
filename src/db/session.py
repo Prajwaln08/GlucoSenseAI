@@ -30,13 +30,23 @@ if DATABASE_URL.startswith("cockroachdb://"):
 elif "cockroachlabs.cloud" in DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "cockroachdb+psycopg2://", 1)
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    echo=False,
-)
+if DATABASE_URL.startswith("sqlite"):
+    # Local dev / tests on SQLite: the API serves sync endpoints from a
+    # threadpool, so connections must allow cross-thread use; the QueuePool
+    # sizing args don't apply to SQLite.
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        echo=False,
+    )
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        echo=False,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
