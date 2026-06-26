@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "GlucoSense",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -35,7 +35,17 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "react-native-health-connect",
+      "./plugins/withHealthPermissions",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

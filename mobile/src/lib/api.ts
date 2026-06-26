@@ -84,4 +84,11 @@ export const Api = {
     const { data } = await api.get('/vitals');
     return data;
   },
+  async syncHealthConnect(payload: {
+    glucose: { t: string; mgdl: number }[];
+    activity: { date: string; steps?: number; calories_active?: number; distance_m?: number; hr_avg_bpm?: number; spo2_avg?: number; sleep_hours?: number }[];
+  }): Promise<{ cgm_inserted: number; activity_days: number }> {
+    const { data } = await api.post('/health-connect/sync', payload);
+    return data;
+  },
 };

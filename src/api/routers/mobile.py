@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from src.api.deps import get_current_user, get_db
 from src.db import crud
 from src.db.models import User, Vitals
+from src.integrations.ingest import ingest_cgm_readings, upsert_activity
+from src.integrations.schemas import ActivityIngest, CgmReadingIngest
 from src.utils import get_logger
 
 router = APIRouter(tags=["mobile"])
@@ -83,7 +85,9 @@ def glucose_timeseries(hours: int = 6, user: User = Depends(get_current_user),
     # Real users → raw from their own CGM stream (predictions arrive once Health
     # Connect / a CGM is connected in Phase 3).
     readings = crud.get_recent_cgm_readings(db, user.id, limit=hours * 6)
-    return {"now": None, "range": {"low": 70, "high": 180},
+    readings = sorted(readings, key=lambda r: r.timestamp)   # chronological for the chart
+    now = readings[-1].timestamp.isoformat() if readings else None
+    return {"now": now, "range": {"low": 70, "high": 180},
             "raw": [{"t": r.timestamp.isoformat(), "mgdl": r.glucose_mgdl} for r in readings],
             "predicted": []}
 
@@ -120,3 +124,56 @@ def list_vitals(limit: int = 20, user: User = Depends(get_current_user),
         "bp_systolic": v.bp_systolic, "bp_diastolic": v.bp_diastolic,
         "source": v.source, "recorded_at": v.recorded_at.isoformat(),
     } for v in rows]
+
+
+# ── Health Connect sync (Android on-device → backend) ─────────────────────────
+
+class HCGlucose(BaseModel):
+    t: str                          # ISO 8601 instant
+    mgdl: float
+
+class HCActivity(BaseModel):
+    date: str                       # "YYYY-MM-DD"
+    steps: Optional[int] = None
+    calories_active: Optional[float] = None
+    distance_m: Optional[float] = None
+    hr_avg_bpm: Optional[float] = None
+    hr_resting_bpm: Optional[float] = None
+    spo2_avg: Optional[float] = None
+    sleep_hours: Optional[float] = None
+
+class HealthConnectSync(BaseModel):
+    glucose: list[HCGlucose] = []
+    activity: list[HCActivity] = []
+
+
+def _parse_instant(s: str) -> datetime:
+    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+@router.post("/health-connect/sync")
+def health_connect_sync(body: HealthConnectSync,
+                        user: User = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+    """Ingest glucose + daily activity the app read from Android Health Connect.
+
+    Goes through the shared dedup ingest path, so re-syncing the same window is
+    idempotent (CGM deduped by (user, timestamp); activity upserted by day).
+    """
+    readings = [CgmReadingIngest(
+        user_id=user.id, timestamp=_parse_instant(g.t), glucose_mgdl=float(g.mgdl),
+        source="health_connect", ingested_via="push", device_type="cgm",
+    ) for g in body.glucose]
+    n_cgm = ingest_cgm_readings(db, readings)
+
+    days = [ActivityIngest(
+        user_id=user.id, calendar_date=a.date, provider="health_connect",
+        steps=a.steps, calories_active=a.calories_active, distance_m=a.distance_m,
+        hr_avg_bpm=a.hr_avg_bpm, hr_resting_bpm=a.hr_resting_bpm,
+        spo2_avg=a.spo2_avg, sleep_hours=a.sleep_hours,
+    ) for a in body.activity]
+    n_act = upsert_activity(db, days)
+
+    log.info(f"health-connect sync user={user.id}: +{n_cgm} cgm, {n_act} activity days")
+    return {"cgm_inserted": n_cgm, "activity_days": n_act}

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GlucoseChart } from '@/components/GlucoseChart';
 import { LogSheet } from '@/components/LogSheet';
 import { Body, Card, H1, H2, Muted, Pill, Screen } from '@/components/ui';
+import { syncHealthConnect } from '@/health/healthConnect';
 import { Api } from '@/lib/api';
 import { mockRecommendations, mockTimeseries } from '@/lib/mock';
 import { useColors } from '@/lib/theme';
@@ -18,8 +19,25 @@ export default function Home() {
   const qc = useQueryClient();
   const [horizon, setHorizon] = useState(60);
   const [sheet, setSheet] = useState<null | 'food' | 'vitals'>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [hcStatus, setHcStatus] = useState('Not connected');
 
   const { data, isLoading } = useQuery({ queryKey: ['timeseries'], queryFn: () => Api.timeseries(6) });
+
+  async function connectHealthConnect() {
+    setSyncing(true);
+    setHcStatus('Syncing…');
+    const res = await syncHealthConnect();
+    setSyncing(false);
+    if (res.ok) {
+      setHcStatus(`Synced · +${res.cgm_inserted ?? 0} readings`);
+      qc.invalidateQueries({ queryKey: ['timeseries'] });
+      Alert.alert('Health Connect', `Synced ${res.cgm_inserted ?? 0} glucose readings and ${res.activity_days ?? 0} day(s) of activity.`);
+    } else {
+      setHcStatus('Not connected');
+      Alert.alert('Health Connect', res.message ?? 'Could not sync.');
+    }
+  }
 
   // Real data when available; mock keeps the screen alive while loading / before any CGM.
   const hasReal = !!data && data.raw.length > 0;
@@ -99,18 +117,26 @@ export default function Home() {
           {/* D — connections */}
           <H2>Connections</H2>
           <Card>
-            {[{ name: 'Health Connect', status: 'Not connected' }, { name: 'CGM (Libre / Dexcom)', status: 'Not connected' }].map((conn, i) => (
-              <View key={conn.name} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
-                borderTopWidth: i ? 1 : 0, borderTopColor: c.border }}>
-                <View style={{ flex: 1 }}>
-                  <Body style={{ fontWeight: '600' }}>{conn.name}</Body>
-                  <Muted>{conn.status}</Muted>
-                </View>
-                <Pressable onPress={() => Alert.alert(conn.name, 'Health Connect wired in Phase 3.')}>
-                  <Body style={{ color: c.accent, fontWeight: '600' }}>Connect</Body>
-                </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Body style={{ fontWeight: '600' }}>Health Connect</Body>
+                <Muted>{hcStatus}</Muted>
               </View>
-            ))}
+              <Pressable onPress={connectHealthConnect} disabled={syncing}>
+                <Body style={{ color: c.accent, fontWeight: '600', opacity: syncing ? 0.5 : 1 }}>
+                  {syncing ? 'Syncing…' : 'Sync now'}
+                </Body>
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
+              <View style={{ flex: 1 }}>
+                <Body style={{ fontWeight: '600' }}>CGM (Libre / Dexcom)</Body>
+                <Muted>Reads through Health Connect</Muted>
+              </View>
+              <Pressable onPress={() => Alert.alert('CGM', 'Pair your CGM with Health Connect, then tap Sync now.')}>
+                <Body style={{ color: c.accent, fontWeight: '600' }}>How?</Body>
+              </Pressable>
+            </View>
           </Card>
         </ScrollView>
 
