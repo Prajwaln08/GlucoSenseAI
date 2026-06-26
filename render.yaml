@@ -21,6 +21,15 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "60"
 
+      # AI coach (Claude) — server-side only; the mobile app never holds this key.
+      # If ANTHROPIC_API_KEY is unset the coach falls back to safe rule-based replies.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: COACH_MODEL
+        value: "claude-sonnet-4-6"
+      - key: COACH_MAX_TOKENS
+        value: "1024"
+
       # Junction wearable (PRIMARY CGM)
       - key: JUNCTION_BASE_URL
         value: "https://api.sandbox.us.junction.com"
