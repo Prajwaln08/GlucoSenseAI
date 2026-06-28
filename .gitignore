@@ -87,6 +87,11 @@ reports/figures/*
 *.jpeg
 *.svg
 
+# App bundled assets (icons/splash) ARE shipped — they're referenced by
+# mobile/app.json and required by EAS prebuild. The image rules above target
+# generated ML plots/figures, not the app's own assets.
+!mobile/assets/**
+
 # ── Node / Frontend ──────────────────────────────────────
 node_modules/
 
