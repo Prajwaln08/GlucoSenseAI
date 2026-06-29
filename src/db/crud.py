@@ -13,7 +13,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from src.db.models import (
-    CgmReading, FoodLog, PredictionLog, RetrainJob, User, WearableActivity,
+    CgmReading, ChatMessage, FoodLog, PredictionLog, Recommendation,
+    RetrainJob, User, Vitals, WearableActivity,
 )
 
 # Profile fields a user may edit via onboarding/account (never email/password/dataset here).
@@ -296,6 +297,10 @@ def delete_user(db: Session, user: User) -> None:
     """
     db.query(CgmReading).filter(CgmReading.user_id == user.id).delete(synchronize_session=False)
     db.query(WearableActivity).filter(WearableActivity.user_id_fk == user.id).delete(synchronize_session=False)
+    # mobile tables (no cascade relationship on User) — delete explicitly too
+    db.query(Vitals).filter(Vitals.user_id_fk == user.id).delete(synchronize_session=False)
+    db.query(ChatMessage).filter(ChatMessage.user_id_fk == user.id).delete(synchronize_session=False)
+    db.query(Recommendation).filter(Recommendation.user_id_fk == user.id).delete(synchronize_session=False)
     db.delete(user)
 
 
