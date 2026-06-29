@@ -2,10 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { AppThemeProvider, useColors } from '@/lib/theme';
 
 const queryClient = new QueryClient();
 
@@ -29,22 +29,30 @@ function Guard() {
   return null;
 }
 
+function RootNav() {
+  const { isDark } = useColors();
+  return (
+    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <Guard />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </ThemeProvider>
+  );
+}
+
 export default function RootLayout() {
-  const scheme = useColorScheme();
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Guard />
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(auth)" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-          </ThemeProvider>
-        </AuthProvider>
+        <AppThemeProvider>
+          <AuthProvider>
+            <RootNav />
+          </AuthProvider>
+        </AppThemeProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
   );

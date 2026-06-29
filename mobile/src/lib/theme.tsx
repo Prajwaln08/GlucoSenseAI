@@ -1,7 +1,10 @@
 /**
- * Semantic color tokens — light + dark. No purple / violet / indigo anywhere.
+ * Semantic color tokens — light + dark — plus a persisted Light/Dark/System
+ * preference. No purple / violet / indigo anywhere.
  * Accent = rose/coral; glucose: emerald (in-range), amber (hypo), red (hyper).
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
 export type Palette = {
@@ -55,9 +58,31 @@ const dark: Palette = {
   shadow: 'rgba(0,0,0,0.4)',
 };
 
+// ── Light / Dark / System preference (persisted) ──────────────────────────────
+export type ThemePref = 'light' | 'dark' | 'system';
+type Ctx = { pref: ThemePref; setPref: (p: ThemePref) => void };
+const ThemeCtx = createContext<Ctx>({ pref: 'system', setPref: () => {} });
+const PREF_KEY = 'glucose.theme';
+
+export function AppThemeProvider({ children }: { children: ReactNode }) {
+  const [pref, setP] = useState<ThemePref>('system');
+  useEffect(() => {
+    AsyncStorage.getItem(PREF_KEY).then((v) => {
+      if (v === 'light' || v === 'dark' || v === 'system') setP(v);
+    });
+  }, []);
+  const setPref = (p: ThemePref) => { setP(p); AsyncStorage.setItem(PREF_KEY, p); };
+  return <ThemeCtx.Provider value={{ pref, setPref }}>{children}</ThemeCtx.Provider>;
+}
+
+export function useThemePref() {
+  return useContext(ThemeCtx);
+}
+
 export function useColors() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const { pref } = useContext(ThemeCtx);
+  const system = useColorScheme();
+  const isDark = pref === 'system' ? system === 'dark' : pref === 'dark';
   return { ...(isDark ? dark : light), isDark };
 }
 

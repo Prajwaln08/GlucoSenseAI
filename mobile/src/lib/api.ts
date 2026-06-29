@@ -106,4 +106,11 @@ export const Api = {
     const { data } = await api.get('/coach/recommendations');
     return data;
   },
+  async exportData() {
+    const { data } = await api.get('/account/export');
+    return data;
+  },
+  async deleteAccount() {
+    await api.delete('/account');
+  },
 };
