@@ -48,6 +48,14 @@ export type Timeseries = {
 };
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 export type Recommendation = { id: string; kind: 'diet' | 'activity'; title: string; body: string };
+export type FoodEntry = { id: string; meal_type: string; description?: string; quantity?: number; portion_size?: string; logged_at?: string };
+export type VitalEntry = { id: string; kind: string; value?: number; bp_systolic?: number; bp_diastolic?: number; recorded_at?: string };
+export type DailyLogs = {
+  date: string;
+  food: FoodEntry[];
+  vitals: VitalEntry[];
+  activity: { steps?: number; hr_avg_bpm?: number; calories_active?: number } | null;
+};
 
 // ── Endpoints ───────────────────────────────────────────────────────────────
 export const Api = {
@@ -104,6 +112,10 @@ export const Api = {
   },
   async recommendations(): Promise<Recommendation[]> {
     const { data } = await api.get('/coach/recommendations');
+    return data;
+  },
+  async logs(date: string): Promise<DailyLogs> {
+    const { data } = await api.get('/me/logs', { params: { date_str: date } });
     return data;
   },
   async exportData() {

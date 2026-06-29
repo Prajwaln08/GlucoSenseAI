@@ -3,7 +3,7 @@ Mobile-facing endpoints for the React Native app: profile, the dashboard glucose
 timeseries, and vitals logging. Auth via the same JWT bearer as the rest of the API.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_db
 from src.db import crud
-from src.db.models import User, Vitals
+from src.db.models import FoodLog, User, Vitals, WearableActivity
 from src.integrations.ingest import ingest_cgm_readings, upsert_activity
 from src.integrations.schemas import ActivityIngest, CgmReadingIngest
 from src.utils import get_logger
@@ -145,6 +145,45 @@ def list_vitals(limit: int = 20, user: User = Depends(get_current_user),
         "bp_systolic": v.bp_systolic, "bp_diastolic": v.bp_diastolic,
         "source": v.source, "recorded_at": v.recorded_at.isoformat(),
     } for v in rows]
+
+
+# ── Daily logs (Profile → Logs calendar) ──────────────────────────────────────
+
+@router.get("/me/logs")
+def my_logs(date_str: str, user: User = Depends(get_current_user),
+            db: Session = Depends(get_db)):
+    """Food + vitals + activity for one calendar day (date_str = YYYY-MM-DD, UTC)."""
+    day = datetime.strptime(date_str, "%Y-%m-%d").date()
+    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
+    end = datetime.combine(day, time.max, tzinfo=timezone.utc)
+
+    foods = (db.query(FoodLog)
+             .filter(FoodLog.user_id_fk == user.id, FoodLog.logged_at >= start, FoodLog.logged_at <= end)
+             .order_by(FoodLog.logged_at.desc()).all())
+    vitals = (db.query(Vitals)
+              .filter(Vitals.user_id_fk == user.id, Vitals.recorded_at >= start, Vitals.recorded_at <= end)
+              .order_by(Vitals.recorded_at.desc()).all())
+    act = (db.query(WearableActivity)
+           .filter(WearableActivity.user_id_fk == user.id, WearableActivity.calendar_date == date_str)
+           .first())
+
+    return {
+        "date": date_str,
+        "food": [{
+            "id": f.id, "meal_type": f.meal_type, "description": f.description,
+            "quantity": f.quantity, "portion_size": f.portion_size,
+            "logged_at": f.logged_at.isoformat() if f.logged_at else None,
+        } for f in foods],
+        "vitals": [{
+            "id": v.id, "kind": v.kind, "value": v.value,
+            "bp_systolic": v.bp_systolic, "bp_diastolic": v.bp_diastolic,
+            "recorded_at": v.recorded_at.isoformat() if v.recorded_at else None,
+        } for v in vitals],
+        "activity": None if act is None else {
+            "steps": act.steps, "hr_avg_bpm": act.hr_avg_bpm,
+            "calories_active": act.calories_active,
+        },
+    }
 
 
 # ── Health Connect sync (Android on-device → backend) ─────────────────────────

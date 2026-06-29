@@ -4,6 +4,7 @@ import { Alert, Linking, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EditProfileSheet } from '@/components/EditProfileSheet';
+import { LogsSection } from '@/components/LogsSection';
 import { Body, Button, Card, H1, H2, Muted, Screen, Select } from '@/components/ui';
 import { disconnectHealthConnect, getHcStatus, type HcStatus } from '@/health/healthConnect';
 import { Api } from '@/lib/api';
@@ -74,6 +75,9 @@ export default function Profile() {
             ))}
             <Button title="Edit details" variant="ghost" onPress={() => setEdit(true)} style={{ marginTop: 12 }} />
           </Card>
+
+          <H2>Logs</H2>
+          <LogsSection />
 
           <H2>Theme</H2>
           <Card>
