@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Dimensions, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ const HORIZONS = [30, 60, 90, 120];
 export default function Home() {
   const c = useColors();
   const qc = useQueryClient();
+  const router = useRouter();
   const [horizon, setHorizon] = useState(60);
   const [sheet, setSheet] = useState<null | 'food' | 'vitals'>(null);
   const [syncing, setSyncing] = useState(false);
@@ -138,12 +140,13 @@ export default function Home() {
               </Pressable>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.border }}>
+              <View style={{ width: 9, height: 9, borderRadius: 999, marginRight: 10, backgroundColor: c.textMuted }} />
               <View style={{ flex: 1 }}>
                 <Body style={{ fontWeight: '600' }}>CGM (Libre / Dexcom)</Body>
-                <Muted>Reads through Health Connect</Muted>
+                <Muted>Reads through Junction or xDRIP</Muted>
               </View>
-              <Pressable onPress={() => Alert.alert('CGM', 'Pair your CGM with Health Connect, then tap Sync now.')}>
-                <Body style={{ color: c.accent, fontWeight: '600' }}>How?</Body>
+              <Pressable onPress={() => router.push('/cgm')}>
+                <Body style={{ color: c.accent, fontWeight: '600' }}>Set up</Body>
               </Pressable>
             </View>
           </Card>

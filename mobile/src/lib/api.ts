@@ -118,6 +118,19 @@ export const Api = {
     const { data } = await api.get('/me/logs', { params: { date_str: date } });
     return data;
   },
+  // ── CGM: xDRIP push key + Junction link ──
+  async cgmKey(rotate = false): Promise<{ cgm_api_key: string; push_url: string }> {
+    const { data } = await api.post('/cgm/key', null, { params: { rotate } });
+    return data;
+  },
+  async junctionLink(): Promise<{ junction_user_id: string; link_token: string; link_web_url: string }> {
+    const { data } = await api.post('/wearable/link-token');
+    return data;
+  },
+  async junctionSync(): Promise<{ glucose_readings_saved: number; activity_days_saved: number; message: string }> {
+    const { data } = await api.post('/wearable/sync');
+    return data;
+  },
   async exportData() {
     const { data } = await api.get('/account/export');
     return data;

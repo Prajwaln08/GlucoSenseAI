@@ -19,11 +19,12 @@ function Guard() {
     const root = segments[0];
     const inAuth = root === '(auth)';
     const inOnboarding = root === 'onboarding';
-    const inTabs = root === '(tabs)';
 
     if (!session && !inAuth) router.replace('/(auth)/login');
     else if (session && !onboarded && !inOnboarding) router.replace('/onboarding');
-    else if (session && onboarded && !inTabs) router.replace('/(tabs)');
+    // once onboarded, only bounce OUT of the auth/onboarding flows — allow other
+    // authenticated screens (e.g. /cgm) to stay.
+    else if (session && onboarded && (inAuth || inOnboarding)) router.replace('/(tabs)');
   }, [ready, session, onboarded, segments]);
 
   return null;
@@ -39,6 +40,7 @@ function RootNav() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="cgm" />
       </Stack>
     </ThemeProvider>
   );
