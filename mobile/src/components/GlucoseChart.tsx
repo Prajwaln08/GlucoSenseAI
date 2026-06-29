@@ -1,10 +1,10 @@
 /**
- * Glucose chart: shaded normal-range band, raw readings (solid), and the
- * model's predicted readings (dashed, into the future), with a "now" marker.
- * Pure react-native-svg — no heavy charting dependency.
+ * Glucose chart: fixed y-axis (mg/dL) + horizontally-scrollable plot with an
+ * hourly grid, shaded normal-range band, raw readings (solid) and predicted
+ * readings (dashed). Auto-scrolls to "now". Pure react-native-svg.
  */
-import { useMemo } from 'react';
-import { View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { ScrollView, View } from 'react-native';
 import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { useColors } from '@/lib/theme';
 import type { GlucosePoint } from '@/lib/mock';
@@ -20,64 +20,89 @@ type Props = {
 
 const Y_MIN = 40;
 const Y_MAX = 260;
-const PAD = { top: 10, right: 10, bottom: 18, left: 30 };
+const Y_TICKS = [40, 80, 120, 160, 200, 240];
+const TOP = 12;
+const BOTTOM = 22;     // room for hour labels
+const LEFT = 10;
+const RIGHT = 16;
+const HOUR_W = 74;     // px per hour
+const YAXIS_W = 32;
+const HOUR_MS = 3_600_000;
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+const fmtHour = (t: number) => {
+  const h = new Date(t).getHours();
+  return `${(h % 12) || 12} ${h >= 12 ? 'PM' : 'AM'}`;
+};
 
 export function GlucoseChart({ raw, predicted, now, range, height = 220, width = 340 }: Props) {
   const c = useColors();
-  const all = [...raw, ...predicted];
+  const scrollRef = useRef<ScrollView>(null);
 
-  const { plot } = useMemo(() => {
-    const w = width - PAD.left - PAD.right;
-    const h = height - PAD.top - PAD.bottom;
-    const tMin = all[0]?.t ?? now;
-    const tMax = all[all.length - 1]?.t ?? now;
-    const sx = (t: number) => PAD.left + ((t - tMin) / Math.max(1, tMax - tMin)) * w;
-    const sy = (g: number) => PAD.top + (1 - (clamp(g, Y_MIN, Y_MAX) - Y_MIN) / (Y_MAX - Y_MIN)) * h;
-    const line = (pts: GlucosePoint[]) =>
-      pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.t).toFixed(1)},${sy(p.mgdl).toFixed(1)}`).join(' ');
-    return {
-      plot: {
-        w, h, sx, sy,
-        rawPath: line(raw),
-        predPath: line(predicted),
-        bandTop: sy(range.high),
-        bandBottom: sy(range.low),
-        nowX: sx(now),
-      },
-    };
-  }, [raw, predicted, now, range, width, height]);
+  const all = [...raw, ...predicted];
+  const tMin = all[0]?.t ?? now;
+  const tMax = all[all.length - 1]?.t ?? now + HOUR_MS;
+  const spanMin = Math.max(60, (tMax - tMin) / 60000);
+  const viewportW = Math.max(0, width - YAXIS_W);
+  const contentW = Math.max(viewportW, (spanMin / 60) * HOUR_W);
+  const innerH = height - TOP - BOTTOM;
+  const innerW = contentW - LEFT - RIGHT;
+
+  const sx = (t: number) => LEFT + ((t - tMin) / Math.max(1, tMax - tMin)) * innerW;
+  const sy = (g: number) => TOP + (1 - (clamp(g, Y_MIN, Y_MAX) - Y_MIN) / (Y_MAX - Y_MIN)) * innerH;
+  const line = (pts: GlucosePoint[]) =>
+    pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.t).toFixed(1)},${sy(p.mgdl).toFixed(1)}`).join(' ');
+
+  const hourTicks: number[] = [];
+  for (let t = Math.ceil(tMin / HOUR_MS) * HOUR_MS; t <= tMax; t += HOUR_MS) hourTicks.push(t);
+
+  // auto-scroll so "now" sits ~62% across the viewport (recent past + forecast visible)
+  useEffect(() => {
+    const x = Math.max(0, sx(now) - viewportW * 0.62);
+    const id = setTimeout(() => scrollRef.current?.scrollTo({ x, animated: false }), 0);
+    return () => clearTimeout(id);
+  }, [contentW, now, viewportW]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <View>
-      <Svg width={width} height={height}>
-        {/* normal-range shaded band (70–180) */}
-        <Rect
-          x={PAD.left} y={plot.bandTop}
-          width={plot.w} height={Math.max(0, plot.bandBottom - plot.bandTop)}
-          fill={c.inRangeBand}
-        />
-        <Line x1={PAD.left} x2={width - PAD.right} y1={plot.bandTop} y2={plot.bandTop}
-          stroke={c.inRange} strokeOpacity={0.4} strokeDasharray="3 4" />
-        <Line x1={PAD.left} x2={width - PAD.right} y1={plot.bandBottom} y2={plot.bandBottom}
-          stroke={c.inRange} strokeOpacity={0.4} strokeDasharray="3 4" />
-
-        {/* y labels */}
-        <SvgText x={4} y={plot.bandTop + 4} fontSize="10" fill={c.textMuted}>{range.high}</SvgText>
-        <SvgText x={4} y={plot.bandBottom + 4} fontSize="10" fill={c.textMuted}>{range.low}</SvgText>
-
-        {/* "now" divider between raw and predicted */}
-        <Line x1={plot.nowX} x2={plot.nowX} y1={PAD.top} y2={height - PAD.bottom}
-          stroke={c.border} strokeWidth={1} />
-        <SvgText x={plot.nowX - 8} y={height - 5} fontSize="10" fill={c.textMuted}>now</SvgText>
-
-        {/* raw (solid) + predicted (dashed) */}
-        <Path d={plot.rawPath} stroke={c.text} strokeWidth={2} fill="none" />
-        <Path d={plot.predPath} stroke={c.accent} strokeWidth={2.5} fill="none" strokeDasharray="5 4" />
+    <View style={{ flexDirection: 'row' }}>
+      {/* fixed y-axis */}
+      <Svg width={YAXIS_W} height={height}>
+        {Y_TICKS.map((v) => (
+          <SvgText key={v} x={YAXIS_W - 5} y={sy(v) + 3} fontSize="10" fill={c.textMuted} textAnchor="end">{v}</SvgText>
+        ))}
       </Svg>
+
+      {/* scrollable plot */}
+      <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}>
+        <Svg width={contentW} height={height}>
+          {/* horizontal gridlines */}
+          {Y_TICKS.map((v) => (
+            <Line key={`h${v}`} x1={0} x2={contentW} y1={sy(v)} y2={sy(v)} stroke={c.border} strokeOpacity={0.45} strokeWidth={1} />
+          ))}
+
+          {/* normal-range band + boundary lines */}
+          <Rect x={0} y={sy(range.high)} width={contentW} height={Math.max(0, sy(range.low) - sy(range.high))} fill={c.inRangeBand} />
+          <Line x1={0} x2={contentW} y1={sy(range.high)} y2={sy(range.high)} stroke={c.inRange} strokeOpacity={0.4} strokeDasharray="3 4" />
+          <Line x1={0} x2={contentW} y1={sy(range.low)} y2={sy(range.low)} stroke={c.inRange} strokeOpacity={0.4} strokeDasharray="3 4" />
+
+          {/* vertical hour gridlines */}
+          {hourTicks.map((t) => (
+            <Line key={`v${t}`} x1={sx(t)} x2={sx(t)} y1={TOP} y2={height - BOTTOM} stroke={c.border} strokeOpacity={0.35} strokeWidth={1} />
+          ))}
+          {/* hour labels */}
+          {hourTicks.map((t) => (
+            <SvgText key={`l${t}`} x={sx(t)} y={height - 6} fontSize="9" fill={c.textMuted} textAnchor="middle">{fmtHour(t)}</SvgText>
+          ))}
+
+          {/* "now" marker */}
+          <Line x1={sx(now)} x2={sx(now)} y1={TOP} y2={height - BOTTOM} stroke={c.accent} strokeWidth={1.5} strokeDasharray="2 3" />
+          <SvgText x={sx(now)} y={TOP + 8} fontSize="9" fill={c.accent} textAnchor="middle">now</SvgText>
+
+          {/* raw (solid) + predicted (dashed) */}
+          <Path d={line(raw)} stroke={c.text} strokeWidth={2} fill="none" />
+          <Path d={line(predicted)} stroke={c.accent} strokeWidth={2.5} fill="none" strokeDasharray="5 4" />
+        </Svg>
+      </ScrollView>
     </View>
   );
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
 }
