@@ -25,7 +25,7 @@ export default function Chat() {
 
   const { data: history } = useQuery({ queryKey: ['coach-messages'], queryFn: () => Api.coachMessages() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
-  const firstName = (profile?.name?.trim().split(/\s+/)[0] || '').trim();
+  const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
   const [messages, setMessages] = useState<Msg[]>([welcomeMsg('')]);
 

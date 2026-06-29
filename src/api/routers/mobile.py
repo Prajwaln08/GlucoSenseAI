@@ -3,7 +3,7 @@ Mobile-facing endpoints for the React Native app: profile, the dashboard glucose
 timeseries, and vitals logging. Auth via the same JWT bearer as the rest of the API.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -25,6 +25,9 @@ log = get_logger(__name__)
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
     age: Optional[float] = None
     gender: Optional[str] = None
     height_cm: Optional[float] = None
@@ -39,7 +42,10 @@ class ProfileUpdate(BaseModel):
 
 def _profile_dict(u: User) -> dict:
     return {
-        "email": u.email, "name": u.name, "age": u.age, "gender": u.gender,
+        "email": u.email, "name": u.name,
+        "first_name": u.first_name, "last_name": u.last_name,
+        "date_of_birth": u.date_of_birth.isoformat() if u.date_of_birth else None,
+        "age": u.age, "gender": u.gender,
         "height_cm": u.height_cm, "weight_kg": u.weight_kg, "bmi": u.bmi,
         "bp_systolic": u.bp_systolic, "bp_diastolic": u.bp_diastolic,
         "bp_recorded_at": u.bp_recorded_at.isoformat() if u.bp_recorded_at else None,
@@ -47,6 +53,11 @@ def _profile_dict(u: User) -> dict:
         "medical_history": u.medical_history, "medications": u.medications,
         "onboarding_complete": u.onboarding_complete,
     }
+
+
+def _age_from_dob(dob: date) -> int:
+    t = date.today()
+    return t.year - dob.year - ((t.month, t.day) < (dob.month, dob.day))
 
 
 @router.get("/me/profile")
@@ -60,6 +71,13 @@ def update_profile(body: ProfileUpdate, user: User = Depends(get_current_user),
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(user, k, v)
+    # keep derived fields in sync: name = first + last, age = from DOB
+    if body.first_name is not None or body.last_name is not None:
+        full = f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip()
+        if full:
+            user.name = full
+    if body.date_of_birth is not None:
+        user.age = _age_from_dob(body.date_of_birth)
     if body.bp_systolic is not None or body.bp_diastolic is not None:
         user.bp_recorded_at = datetime.now(timezone.utc)
     if user.height_cm and user.weight_kg:

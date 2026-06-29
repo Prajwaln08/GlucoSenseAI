@@ -121,10 +121,11 @@ export default function Onboarding() {
 
     setSaving(true);
     try {
-      const dob = makeDate(Number(f.dobD), Number(f.dobM), Number(f.dobY))!;
+      const iso = `${f.dobY}-${f.dobM.padStart(2, '0')}-${f.dobD.padStart(2, '0')}`;  // YYYY-MM-DD
       await Api.updateProfile({
-        name: `${f.firstName.trim()} ${f.lastName.trim()}`.trim(),
-        age: ageFrom(dob),
+        first_name: f.firstName.trim(),
+        last_name: f.lastName.trim(),
+        date_of_birth: iso,                 // backend derives name + age
         gender,
         height_cm: Number(f.heightCm), weight_kg: Number(f.weightKg),
         bp_systolic: Number(f.bpSys), bp_diastolic: Number(f.bpDia),

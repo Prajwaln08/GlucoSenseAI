@@ -34,7 +34,8 @@ api.interceptors.request.use(async (config) => {
 
 // ── Types ───────────────────────────────────────────────────────────────────
 export type Profile = {
-  email: string; name?: string; age?: number; gender?: string;
+  email: string; name?: string; first_name?: string; last_name?: string;
+  date_of_birth?: string; age?: number; gender?: string;
   height_cm?: number; weight_kg?: number; bmi?: number;
   bp_systolic?: number; bp_diastolic?: number; bp_recorded_at?: string;
   hba1c?: number; diabetes_type?: string; medical_history?: string;

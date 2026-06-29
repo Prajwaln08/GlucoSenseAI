@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, ForeignKey,
+    Boolean, Column, Date, DateTime, Float, ForeignKey,
     Integer, String, Text,
 )
 from sqlalchemy.orm import relationship
@@ -38,7 +38,10 @@ class User(Base):
     user_id         = Column(String, nullable=True, index=True)  # "003", "019", etc.
     dataset         = Column(String, nullable=True)              # "cgmacros" | "nature_paper"
     # Profile
-    name            = Column(String,  nullable=True)
+    name            = Column(String,  nullable=True)   # full display name (first + last)
+    first_name      = Column(String,  nullable=True)
+    last_name       = Column(String,  nullable=True)
+    date_of_birth   = Column(Date,    nullable=True)
     gender          = Column(String,  nullable=True)   # male|female|other|prefer_not_to_say
     height_cm       = Column(Float,   nullable=True)
     weight_kg       = Column(Float,   nullable=True)

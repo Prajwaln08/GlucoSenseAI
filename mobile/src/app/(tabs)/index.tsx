@@ -25,7 +25,7 @@ export default function Home() {
   const { data, isLoading } = useQuery({ queryKey: ['timeseries'], queryFn: () => Api.timeseries(6) });
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
-  const firstName = (profile?.name?.trim().split(/\s+/)[0] || '').trim();
+  const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
   async function connectHealthConnect() {
     setSyncing(true);
