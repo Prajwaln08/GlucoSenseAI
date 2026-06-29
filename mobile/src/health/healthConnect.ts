@@ -8,6 +8,7 @@
  *
  * NOTE: the native module only exists in a dev/production build (not Expo Go).
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { Api } from '@/lib/api';
 
@@ -18,6 +19,27 @@ export type SyncResult = {
   cgm_inserted?: number;
   activity_days?: number;
 };
+
+// ── Connection status (persisted locally) ─────────────────────────────────────
+const HC_KEY = 'glucose.healthconnect';
+export type HcStatus = { connected: boolean; lastSync?: string };
+
+export async function getHcStatus(): Promise<HcStatus> {
+  try {
+    const raw = await AsyncStorage.getItem(HC_KEY);
+    return raw ? JSON.parse(raw) : { connected: false };
+  } catch {
+    return { connected: false };
+  }
+}
+
+async function markConnected(): Promise<void> {
+  await AsyncStorage.setItem(HC_KEY, JSON.stringify({ connected: true, lastSync: new Date().toISOString() }));
+}
+
+export async function disconnectHealthConnect(): Promise<void> {
+  await AsyncStorage.removeItem(HC_KEY);
+}
 
 const READ = [
   'BloodGlucose', 'HeartRate', 'Steps', 'ActiveCaloriesBurned',
@@ -35,11 +57,11 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
   }
   try {
     const HC = await import('react-native-health-connect');
-    await HC.initialize();
-
+    const initialized = await HC.initialize();
     const status = await HC.getSdkStatus();
-    if (status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) {
-      return { ok: false, reason: 'unavailable', message: 'Install/enable Health Connect to continue.' };
+    if (!initialized || status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) {
+      return { ok: false, reason: 'unavailable',
+        message: 'Open the Health Connect app and enable it (make sure your CGM/watch app syncs into it), then try again.' };
     }
 
     const granted = await HC.requestPermission(READ.map((rt) => ({ accessType: 'read' as const, recordType: rt })));
@@ -91,6 +113,7 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
     }));
 
     const res = await Api.syncHealthConnect({ glucose, activity });
+    await markConnected();
     return { ok: true, cgm_inserted: res.cgm_inserted, activity_days: res.activity_days };
   } catch (e: any) {
     return { ok: false, reason: 'error', message: e?.message ?? 'Could not read Health Connect.' };

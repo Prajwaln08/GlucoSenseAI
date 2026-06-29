@@ -17,27 +17,27 @@ from src.utils import get_logger
 
 log = get_logger(__name__)
 
-DISCLAIMER = ("I'm an educational coach, not a doctor — I can't diagnose or change "
-              "your medication or insulin. Please check with your care team for those.")
+SYSTEM = """You are Doctor Gluco, a warm, personal AI health assistant for one user living with (or at risk of) diabetes.
 
-SYSTEM = f"""You are GlucoSense, a warm, encouraging diabetes & lifestyle coach for one user.
-
-You are given a CONTEXT snapshot with the only real numbers you may cite. Never invent
-glucose values, predictions, or stats that aren't in the snapshot. If you don't have a
-number, say so plainly.
+You are given a CONTEXT snapshot — the only real numbers you may cite (glucose, forecast,
+their own logged food & vitals, activity, profile). Never invent values that aren't in the
+snapshot; if you don't have a number, say so plainly. Address the user by their first name
+(CONTEXT.profile.first_name) when it feels natural, and refer to their own logged food,
+vitals and glucose trend so advice feels specific and personal — e.g. tie a suggestion to a
+meal they actually logged.
 
 Safety (non-negotiable):
-- You are NOT a clinician. Never diagnose, never give insulin or medication doses, never
-  tell the user to change a prescription. Defer those to their care team.
+- You are not a clinician. Never diagnose, never give insulin or medication doses, never
+  tell the user to change a prescription — guide them to their care team for those.
 - If the snapshot lists urgent SAFETY FLAGS, lead with them clearly and calmly.
 - For anything that sounds like an emergency, tell them to seek medical help now.
+- Do NOT append a medical disclaimer to every reply (the app's terms cover that).
 
 Logging:
 - When the user mentions eating something, call log_food. When they report a blood
   pressure, weight, finger-stick glucose, or HbA1c, call log_vitals. Then confirm briefly.
 
-Style: supportive and practical, plain language, 2–4 short sentences. No markdown headers.
-{DISCLAIMER}"""
+Style: warm, personal, practical, plain language, 2–4 short sentences. No markdown headers."""
 
 
 def _client():
@@ -80,7 +80,7 @@ def chat(db: Session, user: User, ctx: dict, history: list[dict], message: str) 
                 messages.append({"role": "user", "content": results})
                 continue
             text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-            return text.strip() or DISCLAIMER, actions
+            return text.strip() or "Could you say a bit more about what you'd like help with?", actions
         return "Let's keep going — what would you like to do next?", actions
     except Exception as exc:                               # noqa: BLE001
         log.warning(f"coach chat failed: {exc}")
@@ -88,14 +88,20 @@ def chat(db: Session, user: User, ctx: dict, history: list[dict], message: str) 
 
 
 def _fallback(ctx: dict, message: str) -> str:
-    """Safe, useful reply when the LLM is unavailable (no key / error)."""
+    """Safe, personal reply when the LLM is unavailable (no key / error)."""
     flags = rules.red_flags(ctx)
     if flags:
-        return flags[0] + " " + DISCLAIMER
+        return flags[0]
+    name = (ctx.get("profile") or {}).get("first_name") or ""
+    hi = f"Hi {name} — " if name else ""
     g = ctx.get("glucose")
+    food = ctx.get("recent_food") or []
+    bits: list[str] = []
     if g:
-        return (f"Your glucose is sitting {g['trend']} around {g['latest']} mg/dL "
-                f"({g['time_in_range_pct']}% in range lately). I can log meals and vitals for you, "
-                f"and once the AI coach is fully enabled I'll give richer guidance. {DISCLAIMER}")
-    return ("I'm here to help with food, activity and your glucose trends. Connect a CGM to get "
-            f"personalised coaching. {DISCLAIMER}")
+        bits.append(f"your glucose is {g['trend']} around {g['latest']} mg/dL ({g['time_in_range_pct']}% in range lately)")
+    if food and food[0].get("description"):
+        bits.append(f"I see you logged {food[0]['description']} recently")
+    if bits:
+        return hi + "; ".join(bits) + ". I can log meals and vitals for you and talk through your trends — what would you like to do?"
+    return (hi + "I'm here to help with your food, activity and glucose trends, and I can log meals or "
+            "vitals for you. Connect a CGM to unlock personalised forecasts.")

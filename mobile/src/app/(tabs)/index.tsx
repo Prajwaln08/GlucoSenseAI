@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Dimensions, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GlucoseChart } from '@/components/GlucoseChart';
 import { LogSheet } from '@/components/LogSheet';
 import { Body, Card, H1, H2, Muted, Pill, Screen } from '@/components/ui';
-import { syncHealthConnect } from '@/health/healthConnect';
+import { getHcStatus, syncHealthConnect, type HcStatus } from '@/health/healthConnect';
 import { Api } from '@/lib/api';
 import { mockTimeseries } from '@/lib/mock';
 import { useColors } from '@/lib/theme';
@@ -20,24 +20,24 @@ export default function Home() {
   const [horizon, setHorizon] = useState(60);
   const [sheet, setSheet] = useState<null | 'food' | 'vitals'>(null);
   const [syncing, setSyncing] = useState(false);
-  const [hcStatus, setHcStatus] = useState('Not connected');
+  const [hc, setHc] = useState<HcStatus>({ connected: false });
 
   const { data, isLoading } = useQuery({ queryKey: ['timeseries'], queryFn: () => Api.timeseries(6) });
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
+  useEffect(() => { getHcStatus().then(setHc); }, []);
+
   async function connectHealthConnect() {
     setSyncing(true);
-    setHcStatus('Syncing…');
     const res = await syncHealthConnect();
     setSyncing(false);
     if (res.ok) {
-      setHcStatus(`Synced · +${res.cgm_inserted ?? 0} readings`);
+      setHc({ connected: true, lastSync: new Date().toISOString() });
       qc.invalidateQueries({ queryKey: ['timeseries'] });
       Alert.alert('Health Connect', `Synced ${res.cgm_inserted ?? 0} glucose readings and ${res.activity_days ?? 0} day(s) of activity.`);
     } else {
-      setHcStatus('Not connected');
       Alert.alert('Health Connect', res.message ?? 'Could not sync.');
     }
   }
@@ -121,13 +121,19 @@ export default function Home() {
           <H2>Connections</H2>
           <Card>
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
+              <View style={{ width: 9, height: 9, borderRadius: 999, marginRight: 10,
+                backgroundColor: hc.connected ? c.inRange : c.textMuted }} />
               <View style={{ flex: 1 }}>
                 <Body style={{ fontWeight: '600' }}>Health Connect</Body>
-                <Muted>{hcStatus}</Muted>
+                <Muted>
+                  {syncing ? 'Syncing…'
+                    : hc.connected ? `Connected${hc.lastSync ? ` · synced ${syncedLabel(hc.lastSync)}` : ''}`
+                    : 'Not connected'}
+                </Muted>
               </View>
               <Pressable onPress={connectHealthConnect} disabled={syncing}>
                 <Body style={{ color: c.accent, fontWeight: '600', opacity: syncing ? 0.5 : 1 }}>
-                  {syncing ? 'Syncing…' : 'Sync now'}
+                  {syncing ? 'Syncing…' : hc.connected ? 'Sync' : 'Sync now'}
                 </Body>
               </Pressable>
             </View>
@@ -158,3 +164,10 @@ const cta = (accent: string) => ({ flex: 1, height: 48, borderRadius: 14, backgr
 const ctaGhost = (accent: string) => ({ flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: accent, alignItems: 'center' as const, justifyContent: 'center' as const });
 function tone(g: number) { return g < 70 ? 'warn' : g > 180 ? 'bad' : 'good'; }
 function label(g: number) { return g < 70 ? 'Low' : g > 180 ? 'High' : 'In range'; }
+function syncedLabel(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  return hrs < 24 ? `${hrs}h ago` : new Date(iso).toLocaleDateString();
+}
