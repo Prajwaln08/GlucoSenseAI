@@ -1,9 +1,12 @@
 /** Bottom-sheet modal to log food or vitals → POSTs to the backend. */
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Api } from '@/lib/api';
 import { useColors } from '@/lib/theme';
+import { DateTimeSheet, formatWhen } from './DateTimeSheet';
 import { Body, Button, Field, H2, Muted, Select } from './ui';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -15,6 +18,7 @@ export function LogSheet({
   visible, mode, onClose, onLogged,
 }: { visible: boolean; mode: 'food' | 'vitals'; onClose: () => void; onLogged: () => void }) {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const [meal, setMeal] = useState('Lunch');
   const [desc, setDesc] = useState('');
   const [qty, setQty] = useState('');
@@ -23,6 +27,8 @@ export function LogSheet({
   const [dia, setDia] = useState('');
   const [weight, setWeight] = useState('');
   const [hba1c, setHba1c] = useState('');
+  const [when, setWhen] = useState<Date>(() => new Date());
+  const [showWhen, setShowWhen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -34,7 +40,8 @@ export function LogSheet({
   };
 
   function reset() {
-    setDesc(''); setQty(''); setSize(''); setSys(''); setDia(''); setWeight(''); setHba1c(''); setErrors({});
+    setDesc(''); setQty(''); setSize(''); setSys(''); setDia(''); setWeight(''); setHba1c('');
+    setWhen(new Date()); setErrors({});
   }
 
   function validate(): Record<string, string> {
@@ -69,11 +76,13 @@ export function LogSheet({
           description: desc.trim(),
           quantity: Math.round(Number(qty) * 10) / 10,
           portion_size: size.toLowerCase(),
+          logged_at: when.toISOString(),
         });
       } else {
-        if (sys && dia) await Api.addVital({ kind: 'bp', bp_systolic: Number(sys), bp_diastolic: Number(dia) });
-        if (weight) await Api.addVital({ kind: 'weight', value: Number(weight) });
-        if (hba1c) await Api.addVital({ kind: 'hba1c', value: Number(hba1c) });
+        const at = when.toISOString();
+        if (sys && dia) await Api.addVital({ kind: 'bp', bp_systolic: Number(sys), bp_diastolic: Number(dia), recorded_at: at });
+        if (weight) await Api.addVital({ kind: 'weight', value: Number(weight), recorded_at: at });
+        if (hba1c) await Api.addVital({ kind: 'hba1c', value: Number(hba1c), recorded_at: at });
       }
       reset();
       onLogged();
@@ -86,10 +95,14 @@ export function LogSheet({
   }
 
   return (
+    <>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: c.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 24 }}>
-          <H2>{mode === 'food' ? 'Log food' : 'Log vitals'}</H2>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: c.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '88%' }}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ padding: 24, paddingBottom: 28 + insets.bottom }}>
+              <H2>{mode === 'food' ? 'Log food' : 'Log vitals'}</H2>
 
           {mode === 'food' ? (
             <>
@@ -125,11 +138,29 @@ export function LogSheet({
             </>
           )}
 
-          {errors.form ? <Muted style={{ color: c.hyper, marginBottom: 8 }}>{errors.form}</Muted> : null}
-          <Button title="Save" onPress={save} loading={saving} />
-          <Button title="Cancel" variant="ghost" onPress={onClose} style={{ marginTop: 8 }} />
+              <Text style={{ fontSize: 12, color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                When{mode === 'vitals' ? ' (date)' : ''}
+              </Text>
+              <Pressable onPress={() => setShowWhen(true)}
+                style={{ borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, borderRadius: 12,
+                  paddingHorizontal: 14, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Body>{formatWhen(when)}</Body>
+                <Ionicons name="time-outline" size={20} color={c.textMuted} />
+              </Pressable>
+
+              {errors.form ? <Muted style={{ color: c.hyper, marginBottom: 8 }}>{errors.form}</Muted> : null}
+              <Button title="Save" onPress={save} loading={saving} />
+              <Button title="Cancel" variant="ghost" onPress={onClose} style={{ marginTop: 8 }} />
+            </ScrollView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
+
+    {showWhen && (
+      <DateTimeSheet visible value={when} onClose={() => setShowWhen(false)}
+        onConfirm={(d) => { setWhen(d); setShowWhen(false); }} />
+    )}
+    </>
   );
 }

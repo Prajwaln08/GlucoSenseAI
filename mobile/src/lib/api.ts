@@ -78,7 +78,7 @@ export const Api = {
     const { data } = await api.post('/food/log', food);
     return data;
   },
-  async addVital(v: { kind: string; value?: number; bp_systolic?: number; bp_diastolic?: number; source?: string }) {
+  async addVital(v: { kind: string; value?: number; bp_systolic?: number; bp_diastolic?: number; source?: string; recorded_at?: string }) {
     const { data } = await api.post('/vitals', { source: 'home', ...v });
     return data;
   },

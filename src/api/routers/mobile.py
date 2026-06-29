@@ -100,6 +100,7 @@ class VitalIn(BaseModel):
     bp_systolic: Optional[int] = None
     bp_diastolic: Optional[int] = None
     source: str = "home"            # "home" | "chat"
+    recorded_at: Optional[datetime] = None   # omit → server now()
 
 
 @router.post("/vitals", status_code=201)
@@ -108,6 +109,8 @@ def add_vital(body: VitalIn, user: User = Depends(get_current_user),
     v = Vitals(user_id_fk=user.id, kind=body.kind, value=body.value,
                bp_systolic=body.bp_systolic, bp_diastolic=body.bp_diastolic,
                source=body.source)
+    if body.recorded_at is not None:
+        v.recorded_at = body.recorded_at
     db.add(v)
     db.commit()
     db.refresh(v)
