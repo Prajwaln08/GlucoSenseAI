@@ -74,7 +74,7 @@ export const Api = {
     const { data } = await api.get('/glucose/timeseries', { params: { hours } });
     return data;
   },
-  async addFood(food: { meal_type: string; description?: string; carbs_g?: number; protein_g?: number; fat_g?: number; calories?: number }) {
+  async addFood(food: { meal_type: string; description?: string; quantity?: number; portion_size?: string; logged_at?: string; carbs_g?: number; protein_g?: number; fat_g?: number; calories?: number }) {
     const { data } = await api.post('/food/log', food);
     return data;
   },

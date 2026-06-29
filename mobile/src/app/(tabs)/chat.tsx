@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Body, Muted, Screen } from '@/components/ui';
 import { Api } from '@/lib/api';
@@ -10,26 +10,32 @@ import { useColors } from '@/lib/theme';
 
 type Msg = { id: string; role: string; content: string };
 
-const WELCOME: Msg = {
+const welcomeMsg = (firstName: string): Msg => ({
   id: 'welcome', role: 'assistant',
-  content: "Hi, I'm your GlucoSense coach. Ask me about your glucose, meals or activity — and tell me what you eat or any readings and I'll log them for you. Educational guidance only, never medical advice.",
-};
+  content: `Hi${firstName ? ` ${firstName}` : ''}, I'm Doctor Gluco 👋 Ask me anything about diabetes and your glucose, or about the food and vitals you've logged. You can also log a meal or a reading right here — just tell me.`,
+});
 
 export default function Chat() {
   const c = useColors();
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList>(null);
-  const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
 
   const { data: history } = useQuery({ queryKey: ['coach-messages'], queryFn: () => Api.coachMessages() });
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
+  const firstName = (profile?.name?.trim().split(/\s+/)[0] || '').trim();
+
+  const [messages, setMessages] = useState<Msg[]>([welcomeMsg('')]);
 
   useEffect(() => {
     if (history && history.length) {
       setMessages(history.map((m, i) => ({ id: `h${i}`, role: m.role, content: m.content })));
+    } else {
+      setMessages([welcomeMsg(firstName)]);
     }
-  }, [history]);
+  }, [history, firstName]);
 
   async function send() {
     const t = text.trim();
@@ -54,13 +60,15 @@ export default function Chat() {
     <Screen>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: c.border }}>
-          <Body style={{ fontWeight: '700', fontSize: 18 }}>Coach</Body>
-          <Muted>Ask anything · educational guidance, not medical advice</Muted>
+          <Body style={{ fontWeight: '700', fontSize: 18 }}>Doctor Gluco</Body>
+          <Muted>Your glucose, food & vitals — ask or log anything</Muted>
         </View>
         <KeyboardAvoidingView style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + 49 : 0}>
           <FlatList
             ref={listRef}
+            style={{ flex: 1 }}
             data={messages}
             keyExtractor={(m) => m.id}
             contentContainerStyle={{ padding: 16, gap: 10 }}
@@ -74,7 +82,7 @@ export default function Chat() {
           />
           <View style={{ flexDirection: 'row', padding: 12, gap: 8, alignItems: 'center',
             borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface }}>
-            <TextInput value={text} onChangeText={setText} placeholder="Message your coach…"
+            <TextInput value={text} onChangeText={setText} placeholder="Message Doctor Gluco…"
               placeholderTextColor={c.textMuted} onSubmitEditing={send} returnKeyType="send"
               style={{ flex: 1, color: c.text, backgroundColor: c.surfaceAlt, borderRadius: 22,
                 paddingHorizontal: 16, paddingVertical: 11 }} />

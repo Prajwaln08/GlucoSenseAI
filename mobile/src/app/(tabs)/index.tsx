@@ -24,6 +24,8 @@ export default function Home() {
 
   const { data, isLoading } = useQuery({ queryKey: ['timeseries'], queryFn: () => Api.timeseries(6) });
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
+  const firstName = (profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
   async function connectHealthConnect() {
     setSyncing(true);
@@ -56,7 +58,7 @@ export default function Home() {
     <Screen>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }}>
-          <H1>Hi 👋</H1>
+          <H1>{firstName ? `Hi ${firstName} 👋` : 'Hi 👋'}</H1>
           <Muted style={{ marginBottom: 16 }}>
             {isLoading ? 'Loading your glucose…' : hasReal ? "Here's your glucose right now." : 'Showing a sample until a CGM is connected.'}
           </Muted>
@@ -71,7 +73,7 @@ export default function Home() {
             </View>
             <GlucoseChart raw={raw} predicted={predicted} now={now} range={range} width={width} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' }}>
-              <Muted>Forecast</Muted>
+              <Muted>View</Muted>
               {HORIZONS.map((h) => (
                 <Pressable key={h} onPress={() => setHorizon(h)}
                   style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
@@ -81,14 +83,14 @@ export default function Home() {
               ))}
             </View>
             <Muted style={{ marginTop: 10 }}>
-              Predicted ≈ <Body style={{ color: c.accent, fontWeight: '600' }}>{predForHorizon.toFixed(0)} mg/dL</Body> in {horizon} min
+              Your est. glucose will be ~ <Body style={{ color: c.accent, fontWeight: '600' }}>{predForHorizon.toFixed(0)} mg/dL</Body> in {horizon} min
             </Muted>
           </Card>
 
           {/* B — coach recommendations (hidden when none) */}
           {!!recs?.length && (
             <View style={{ marginBottom: 14 }}>
-              <H2>Coach suggestions</H2>
+              <H2>Doctor Gluco's Suggestions</H2>
               {recs.map((r) => (
                 <Card key={r.id} style={{ marginBottom: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -102,7 +104,7 @@ export default function Home() {
           )}
 
           {/* C — food & vitals logging (above connections) */}
-          <H2>Log</H2>
+          <H2>Track food &amp; vitals</H2>
           <Card>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable onPress={() => setSheet('food')} style={cta(c.accent)}>
