@@ -46,8 +46,9 @@ export function LogsSection() {
   const food = data?.food ?? [];
   const vitals = data?.vitals ?? [];
   const act = data?.activity;
+  const glucose = data?.glucose;
   const shownFood = showAllFood ? food : food.slice(0, 5);
-  const empty = !isLoading && food.length === 0 && vitals.length === 0 && !act;
+  const empty = !isLoading && !glucose && food.length === 0 && vitals.length === 0 && !act;
 
   return (
     <Card>
@@ -72,7 +73,19 @@ export function LogsSection() {
         </View>
       ) : empty ? <Muted>No logs on this day.</Muted> : (
         <>
-          {food.length > 0 && <Muted style={{ fontWeight: '700', marginBottom: 4 }}>Food</Muted>}
+          {glucose ? (
+            <>
+              <Muted style={{ fontWeight: '700', marginBottom: 6 }}>Glucose (CGM)</Muted>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, rowGap: 10 }}>
+                <Stat label="Avg" value={`${glucose.avg}`} />
+                <Stat label="Range" value={`${glucose.min}–${glucose.max}`} />
+                <Stat label="In range" value={`${glucose.time_in_range_pct}%`} />
+                <Stat label="Readings" value={`${glucose.count}`} />
+              </View>
+            </>
+          ) : null}
+
+          {food.length > 0 && <Muted style={{ fontWeight: '700', marginTop: glucose ? 14 : 0, marginBottom: 4 }}>Food</Muted>}
           {shownFood.map((f) => (
             <View key={f.id} style={{ flexDirection: 'row', paddingVertical: 6 }}>
               <Body style={{ width: 76, color: c.textMuted, fontSize: 13 }}>{fmtTime(f.logged_at)}</Body>
@@ -100,10 +113,12 @@ export function LogsSection() {
 
           {act ? (
             <>
-              <Muted style={{ fontWeight: '700', marginTop: 14, marginBottom: 6 }}>Activity</Muted>
-              <View style={{ flexDirection: 'row', gap: 20 }}>
+              <Muted style={{ fontWeight: '700', marginTop: 14, marginBottom: 6 }}>Activity (watch)</Muted>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 20, rowGap: 12 }}>
                 {act.steps != null ? <Stat label="Steps" value={String(act.steps)} /> : null}
                 {act.hr_avg_bpm != null ? <Stat label="Avg HR" value={`${Math.round(act.hr_avg_bpm)} bpm`} /> : null}
+                {act.sleep_hours != null ? <Stat label="Sleep" value={`${act.sleep_hours.toFixed(1)} h`} /> : null}
+                {act.spo2_avg != null ? <Stat label="SpO₂" value={`${Math.round(act.spo2_avg)}%`} /> : null}
                 {act.calories_active != null ? <Stat label="Calories" value={String(Math.round(act.calories_active))} /> : null}
               </View>
             </>

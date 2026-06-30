@@ -52,9 +52,10 @@ export type FoodEntry = { id: string; meal_type: string; description?: string; q
 export type VitalEntry = { id: string; kind: string; value?: number; bp_systolic?: number; bp_diastolic?: number; recorded_at?: string };
 export type DailyLogs = {
   date: string;
+  glucose: { count: number; avg: number; min: number; max: number; time_in_range_pct: number } | null;
   food: FoodEntry[];
   vitals: VitalEntry[];
-  activity: { steps?: number; hr_avg_bpm?: number; calories_active?: number } | null;
+  activity: { steps?: number; hr_avg_bpm?: number; calories_active?: number; sleep_hours?: number; spo2_avg?: number; distance_m?: number } | null;
 };
 
 // ── Endpoints ───────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_db
 from src.db import crud
-from src.db.models import FoodLog, User, Vitals, WearableActivity
+from src.db.models import CgmReading, FoodLog, User, Vitals, WearableActivity
 from src.integrations.ingest import ingest_cgm_readings, upsert_activity
 from src.integrations.schemas import ActivityIngest, CgmReadingIngest
 from src.utils import get_logger
@@ -167,8 +167,19 @@ def my_logs(date_str: str, user: User = Depends(get_current_user),
            .filter(WearableActivity.user_id_fk == user.id, WearableActivity.calendar_date == date_str)
            .first())
 
+    # CGM glucose for the day → compact summary (a day can be ~288 readings)
+    gvals = [r.glucose_mgdl for r in db.query(CgmReading)
+             .filter(CgmReading.user_id == user.id, CgmReading.timestamp >= start, CgmReading.timestamp <= end)
+             .all() if r.glucose_mgdl is not None]
+    glucose = None if not gvals else {
+        "count": len(gvals), "avg": round(sum(gvals) / len(gvals), 1),
+        "min": round(min(gvals), 1), "max": round(max(gvals), 1),
+        "time_in_range_pct": round(100 * sum(1 for g in gvals if 70 <= g <= 180) / len(gvals)),
+    }
+
     return {
         "date": date_str,
+        "glucose": glucose,
         "food": [{
             "id": f.id, "meal_type": f.meal_type, "description": f.description,
             "quantity": f.quantity, "portion_size": f.portion_size,
@@ -182,6 +193,8 @@ def my_logs(date_str: str, user: User = Depends(get_current_user),
         "activity": None if act is None else {
             "steps": act.steps, "hr_avg_bpm": act.hr_avg_bpm,
             "calories_active": act.calories_active,
+            "sleep_hours": act.sleep_hours, "spo2_avg": act.spo2_avg,
+            "distance_m": act.distance_m,
         },
     }
 

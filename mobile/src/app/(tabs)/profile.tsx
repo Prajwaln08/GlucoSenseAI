@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Linking, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ const THEME_LABELS = { system: 'System', light: 'Light', dark: 'Dark' } as const
 export default function Profile() {
   const c = useColors();
   const qc = useQueryClient();
+  const router = useRouter();
   const { signOut, session } = useAuth();
   const { pref, setPref } = useThemePref();
   const { data: p } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
@@ -85,12 +87,13 @@ export default function Profile() {
           <H2>Connections</H2>
           <Card>
             <Row name="Health Connect"
-              status={hc.connected ? 'Connected' : 'Not connected'}
+              status={hc.connected ? 'Connected · watch data' : 'Watch: steps, HR, sleep'}
               dot={hc.connected ? c.inRange : c.textMuted}
               action={hc.connected ? 'Disconnect' : undefined}
               onPress={hc.connected ? onDisconnectHc : undefined} c={c} top={false} />
+            <Row name="xDRIP+ (CGM)" status="Stream your glucose" dot={c.textMuted}
+              action="Set up" onPress={() => router.push('/cgm')} c={c} top />
             <Row name="Junction (CGM)" status="Coming soon" dot={c.textMuted} c={c} top />
-            <Row name="xDRIP (CGM)" status="Coming soon" dot={c.textMuted} c={c} top />
           </Card>
 
           <H2>Account</H2>
