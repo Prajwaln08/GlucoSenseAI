@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GlucoseChart } from '@/components/GlucoseChart';
 import { LogSheet } from '@/components/LogSheet';
 import { Body, Card, H1, H2, Muted, Pill, Screen } from '@/components/ui';
-import { getHcStatus, syncHealthConnect, type HcStatus } from '@/health/healthConnect';
+import { getHcStatus, openHealthConnect, syncHealthConnect, type HcStatus } from '@/health/healthConnect';
 import { Api } from '@/lib/api';
 import { mockTimeseries } from '@/lib/mock';
 import { useColors } from '@/lib/theme';
@@ -43,6 +43,9 @@ export default function Home() {
       setHc({ connected: true, lastSync: new Date().toISOString() });
       qc.invalidateQueries({ queryKey: ['timeseries'] });
       Alert.alert('Health Connect', `Synced ${res.cgm_inserted ?? 0} glucose readings and ${res.activity_days ?? 0} day(s) of activity.`);
+    } else if (res.reason === 'denied' || res.reason === 'unavailable') {
+      Alert.alert('Health Connect', res.message ?? 'Could not sync.',
+        [{ text: 'Not now', style: 'cancel' }, { text: 'Open Health Connect', onPress: () => openHealthConnect() }]);
     } else {
       Alert.alert('Health Connect', res.message ?? 'Could not sync.');
     }

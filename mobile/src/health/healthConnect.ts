@@ -41,6 +41,15 @@ export async function disconnectHealthConnect(): Promise<void> {
   await AsyncStorage.removeItem(HC_KEY);
 }
 
+/** Open the Health Connect app's permission screen so the user can grant access. */
+export async function openHealthConnect(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    const HC = await import('react-native-health-connect');
+    await HC.openHealthConnectSettings();
+  } catch { /* ignore */ }
+}
+
 const READ = [
   'BloodGlucose', 'HeartRate', 'Steps', 'ActiveCaloriesBurned',
   'Distance', 'SleepSession', 'OxygenSaturation',
@@ -64,9 +73,15 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
         message: 'Open the Health Connect app and enable it (make sure your CGM/watch app syncs into it), then try again.' };
     }
 
-    const granted = await HC.requestPermission(READ.map((rt) => ({ accessType: 'read' as const, recordType: rt })));
-    if (!granted || granted.length === 0) {
-      return { ok: false, reason: 'denied', message: 'Permission denied.' };
+    await HC.requestPermission(READ.map((rt) => ({ accessType: 'read' as const, recordType: rt })));
+    // requestPermission's return is unreliable (often empty even after granting / when
+    // already granted), so check the ACTUAL granted set as the source of truth.
+    let grantedPerms: any[] = [];
+    try { grantedPerms = await HC.getGrantedPermissions(); } catch { /* ignore */ }
+    const canRead = grantedPerms.some((p: any) => p?.accessType === 'read');
+    if (!canRead) {
+      return { ok: false, reason: 'denied',
+        message: 'No access yet. Tap "Allow" in the Health Connect dialog — or open Health Connect → App permissions → GlucoSense and turn on the data types, then tap Sync now again.' };
     }
 
     const endTime = new Date().toISOString();
