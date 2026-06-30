@@ -1,6 +1,7 @@
-/** Bottom-sheet to log food or vitals → POSTs to the backend. */
+/** Bottom-sheet to log food or vitals → optimistic save (appears instantly). */
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Api } from '@/lib/api';
@@ -22,6 +23,7 @@ export function LogSheet({
   visible, mode, onClose, onLogged,
 }: { visible: boolean; mode: 'food' | 'vitals'; onClose: () => void; onLogged: () => void }) {
   const c = useColors();
+  const qc = useQueryClient();
   const insets = useSafeAreaInsets();
   const [meal, setMeal] = useState('Lunch');
   const [desc, setDesc] = useState('');
@@ -38,7 +40,6 @@ export function LogSheet({
   const [minute, setMinute] = useState(pad2(Math.floor(n0.getMinutes() / 5) * 5));
   const [ampm, setAmpm] = useState(n0.getHours() >= 12 ? 'PM' : 'AM');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
 
   // last 7 days, newest first
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i); return d; });
@@ -84,32 +85,45 @@ export function LogSheet({
     return e;
   }
 
-  async function save() {
+  function save() {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length) return;
 
-    setSaving(true);
-    try {
-      const at = buildWhen().toISOString();
-      if (mode === 'food') {
-        await Api.addFood({
-          meal_type: meal.toLowerCase(), description: desc.trim(),
-          quantity: Math.round(Number(qty) * 10) / 10, portion_size: size.toLowerCase(), logged_at: at,
-        });
-      } else {
-        if (sys && dia) await Api.addVital({ kind: 'bp', bp_systolic: Number(sys), bp_diastolic: Number(dia), recorded_at: at });
-        if (weight) await Api.addVital({ kind: 'weight', value: Number(weight), recorded_at: at });
-        if (hba1c) await Api.addVital({ kind: 'hba1c', value: Number(hba1c), recorded_at: at });
-      }
-      reset();
-      onLogged();
-      onClose();
-    } catch {
-      setErrors({ form: 'Could not save. Try again.' });
-    } finally {
-      setSaving(false);
+    const at = buildWhen().toISOString();
+    const foodPayload = {
+      meal_type: meal.toLowerCase(), description: desc.trim(),
+      quantity: Math.round(Number(qty) * 10) / 10, portion_size: size.toLowerCase(), logged_at: at,
+    };
+    const vitalPayloads: { kind: string; value?: number; bp_systolic?: number; bp_diastolic?: number; recorded_at: string }[] = [];
+    if (sys && dia) vitalPayloads.push({ kind: 'bp', bp_systolic: Number(sys), bp_diastolic: Number(dia), recorded_at: at });
+    if (weight) vitalPayloads.push({ kind: 'weight', value: Number(weight), recorded_at: at });
+    if (hba1c) vitalPayloads.push({ kind: 'hba1c', value: Number(hba1c), recorded_at: at });
+
+    // optimistic: the food marker shows on the chart instantly
+    if (mode === 'food') {
+      qc.setQueryData(['food-recent'], (old: any) =>
+        [{ id: `tmp-${at}`, logged_at: at, meal_type: foodPayload.meal_type, description: foodPayload.description },
+          ...(Array.isArray(old) ? old : [])]);
     }
+
+    reset();
+    onClose();   // close instantly — no waiting on the network
+
+    // sync in the background; revert + warn only if it fails
+    (async () => {
+      try {
+        if (mode === 'food') await Api.addFood(foodPayload);
+        else for (const v of vitalPayloads) await Api.addVital(v);
+        onLogged();
+        qc.invalidateQueries({ queryKey: ['logs'] });
+        qc.invalidateQueries({ queryKey: ['food-recent'] });
+        qc.invalidateQueries({ queryKey: ['recommendations'] });
+      } catch {
+        qc.invalidateQueries({ queryKey: ['food-recent'] });   // undo the optimistic marker
+        Alert.alert('Not saved', 'That entry could not be saved — please check your connection and try again.');
+      }
+    })();
   }
 
   const label = { fontSize: 12, color: c.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 6 };
@@ -167,7 +181,7 @@ export function LogSheet({
               </View>
 
               {errors.form ? <Muted style={{ color: c.hyper, marginBottom: 8 }}>{errors.form}</Muted> : null}
-              <Button title="Save" onPress={save} loading={saving} />
+              <Button title="Save" onPress={save} />
               <Button title="Cancel" variant="ghost" onPress={onClose} style={{ marginTop: 8 }} />
             </ScrollView>
           </Pressable>
