@@ -35,10 +35,6 @@ export default function Profile() {
     ['Medications', dash(p?.medications)],
   ];
 
-  async function onExport() {
-    try { await Api.exportData(); Alert.alert('Export', 'Your data export has been prepared.'); }
-    catch { Alert.alert('Export', 'Could not export right now. Try again later.'); }
-  }
   function onDelete() {
     Alert.alert('Delete account', 'This permanently erases your account and all your data. This cannot be undone.',
       [{ text: 'Cancel', style: 'cancel' },
@@ -99,7 +95,6 @@ export default function Profile() {
 
           <H2>Account</H2>
           <Card>
-            <Button title="Export my data" variant="ghost" onPress={onExport} style={{ marginBottom: 10 }} />
             <Button title="Privacy policy" variant="ghost"
               onPress={() => Alert.alert('Privacy policy', 'We store only the health data you log or sync, use it to power your forecasts & coaching, never sell it, and you can export or delete it anytime.')} style={{ marginBottom: 10 }} />
             <Button title="Terms of use" variant="ghost"

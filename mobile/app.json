@@ -39,6 +39,7 @@
       "expo-secure-store",
       "react-native-health-connect",
       "./plugins/withHealthPermissions",
+      "./plugins/withHealthConnectDelegate",
       [
         "expo-build-properties",
         {

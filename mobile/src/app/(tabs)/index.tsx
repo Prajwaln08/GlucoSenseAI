@@ -89,7 +89,7 @@ export default function Home() {
               ))}
             </View>
             <Muted style={{ marginTop: 10 }}>
-              Your est. glucose will be ~ <Body style={{ color: c.accent, fontWeight: '600' }}>{predForHorizon.toFixed(0)} mg/dL</Body> in {horizon} min
+              Your glucose may reach ~ <Body style={{ color: c.accent, fontWeight: '600' }}>{predForHorizon.toFixed(0)} mg/dL</Body> in {horizon} min
             </Muted>
           </Card>
 
@@ -147,7 +147,7 @@ export default function Home() {
               <View style={{ width: 9, height: 9, borderRadius: 999, marginRight: 10, backgroundColor: c.textMuted }} />
               <View style={{ flex: 1 }}>
                 <Body style={{ fontWeight: '600' }}>CGM (Libre / Dexcom)</Body>
-                <Muted>Reads through Junction or xDRIP</Muted>
+                <Muted>Stream with xDRIP+ · Junction soon</Muted>
               </View>
               <Pressable onPress={() => router.push('/cgm')}>
                 <Body style={{ color: c.accent, fontWeight: '600' }}>Set up</Body>
