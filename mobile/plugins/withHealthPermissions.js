@@ -8,8 +8,9 @@
  */
 const { withAndroidManifest } = require('@expo/config-plugins');
 
+// Watch / wearable metrics only. Glucose comes from a CGM (xDRIP+ / Junction),
+// NOT Health Connect — so no READ_BLOOD_GLUCOSE here.
 const READ_PERMISSIONS = [
-  'android.permission.health.READ_BLOOD_GLUCOSE',
   'android.permission.health.READ_HEART_RATE',
   'android.permission.health.READ_STEPS',
   'android.permission.health.READ_SLEEP',

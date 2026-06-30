@@ -1,10 +1,11 @@
 /**
  * Android Health Connect bridge.
  *
- * Reads the user's own CGM glucose + watch activity (HR / steps / sleep / SpO2)
- * from Health Connect and ships it to the backend's /health-connect/sync. Read
- * only — we never write health data. Everything is guarded so the JS still
- * bundles + runs on iOS / web / Expo Go (where it returns `unavailable`).
+ * Reads the user's WATCH / wearable metrics (heart rate, steps, calories, SpO2,
+ * sleep, distance) from Health Connect and ships them to /health-connect/sync.
+ * Glucose is NOT read here — CGM readings come from a CGM source (xDRIP+ / Junction).
+ * Read-only; everything is guarded so the JS still bundles + runs on iOS / web /
+ * Expo Go (where it returns `unavailable`).
  *
  * NOTE: the native module only exists in a dev/production build (not Expo Go).
  */
@@ -16,7 +17,6 @@ export type SyncResult = {
   ok: boolean;
   reason?: 'platform' | 'unavailable' | 'denied' | 'error';
   message?: string;
-  cgm_inserted?: number;
   activity_days?: number;
 };
 
@@ -50,8 +50,10 @@ export async function openHealthConnect(): Promise<void> {
   } catch { /* ignore */ }
 }
 
+// Watch / wearable metrics only. Glucose is NOT read here — CGM readings come
+// from a dedicated CGM source (xDRIP+ / Junction), not Health Connect.
 const READ = [
-  'BloodGlucose', 'HeartRate', 'Steps', 'ActiveCaloriesBurned',
+  'HeartRate', 'Steps', 'ActiveCaloriesBurned',
   'Distance', 'SleepSession', 'OxygenSaturation',
 ] as const;
 
@@ -70,7 +72,7 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
     const status = await HC.getSdkStatus();
     if (!initialized || status !== HC.SdkAvailabilityStatus.SDK_AVAILABLE) {
       return { ok: false, reason: 'unavailable',
-        message: 'Open the Health Connect app and enable it (make sure your CGM/watch app syncs into it), then try again.' };
+        message: 'Open the Health Connect app and enable it (make sure your watch/fitness app syncs into it), then try again.' };
     }
 
     await HC.requestPermission(READ.map((rt) => ({ accessType: 'read' as const, recordType: rt })));
@@ -91,15 +93,7 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
       try { return (await HC.readRecords(rt as any, filter)).records as any[]; } catch { return []; }
     };
 
-    // ── Glucose → individual CGM points ──
-    const glucose = (await read('BloodGlucose'))
-      .map((r) => ({
-        t: r.time,
-        mgdl: r.level?.inMilligramsPerDeciliter ?? (r.level?.value ? r.level.value : undefined),
-      }))
-      .filter((g): g is { t: string; mgdl: number } => typeof g.mgdl === 'number' && !!g.t);
-
-    // ── Activity → aggregate per day ──
+    // ── Watch activity → aggregate per day (no glucose — that's CGM's job) ──
     type Acc = { steps: number; kcal: number; meters: number; hr: number[]; spo2: number[]; sleepMs: number };
     const byDay = new Map<string, Acc>();
     const acc = (k: string): Acc => {
@@ -127,9 +121,9 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
       sleep_hours: a.sleepMs ? a.sleepMs / 3_600_000 : undefined,
     }));
 
-    const res = await Api.syncHealthConnect({ glucose, activity });
+    const res = await Api.syncHealthConnect({ activity });
     await markConnected();
-    return { ok: true, cgm_inserted: res.cgm_inserted, activity_days: res.activity_days };
+    return { ok: true, activity_days: res.activity_days };
   } catch (e: any) {
     return { ok: false, reason: 'error', message: e?.message ?? 'Could not read Health Connect.' };
   }

@@ -41,8 +41,8 @@ export default function Home() {
     setSyncing(false);
     if (res.ok) {
       setHc({ connected: true, lastSync: new Date().toISOString() });
-      qc.invalidateQueries({ queryKey: ['timeseries'] });
-      Alert.alert('Health Connect', `Synced ${res.cgm_inserted ?? 0} glucose readings and ${res.activity_days ?? 0} day(s) of activity.`);
+      qc.invalidateQueries({ queryKey: ['recommendations'] });   // activity feeds the coach
+      Alert.alert('Health Connect', `Synced ${res.activity_days ?? 0} day(s) of activity — steps, heart rate, sleep & more.`);
     } else if (res.reason === 'denied' || res.reason === 'unavailable') {
       Alert.alert('Health Connect', res.message ?? 'Could not sync.',
         [{ text: 'Not now', style: 'cancel' }, { text: 'Open Health Connect', onPress: () => openHealthConnect() }]);
