@@ -7,7 +7,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { AppThemeProvider, useColors } from '@/lib/theme';
 
-const queryClient = new QueryClient();
+// Cache responses for 30s so navigating between tabs doesn't re-hit the (remote,
+// dev-only) Cockroach DB on every focus — keeps the UI snappy. retry:1 = fail fast.
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 30_000, gcTime: 5 * 60_000, retry: 1 } },
+});
 
 function Guard() {
   const { ready, session, onboarded } = useAuth();

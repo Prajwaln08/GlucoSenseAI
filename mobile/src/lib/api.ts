@@ -91,6 +91,10 @@ export const Api = {
     const { data } = await api.post('/vitals', { source: 'home', ...v });
     return data;
   },
+  async foodLogs(limit = 30): Promise<{ id: string; logged_at: string; meal_type: string; description?: string }[]> {
+    const { data } = await api.get('/food/logs', { params: { limit } });
+    return data;
+  },
   async vitals() {
     const { data } = await api.get('/vitals');
     return data;

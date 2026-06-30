@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { ScrollView, View } from 'react-native';
-import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { useColors } from '@/lib/theme';
 import type { GlucosePoint } from '@/lib/mock';
 
@@ -14,6 +14,7 @@ type Props = {
   predicted: GlucosePoint[];
   now: number;
   range: { low: number; high: number };
+  foodMarkers?: { t: number }[];
   height?: number;
   width?: number;
 };
@@ -35,13 +36,29 @@ const fmtHour = (t: number) => {
   return `${(h % 12) || 12} ${h >= 12 ? 'PM' : 'AM'}`;
 };
 
-export function GlucoseChart({ raw, predicted, now, range, height = 220, width = 340 }: Props) {
+export function GlucoseChart({ raw, predicted, now, range, foodMarkers, height = 220, width = 340 }: Props) {
   const c = useColors();
   const scrollRef = useRef<ScrollView>(null);
 
   const all = [...raw, ...predicted];
   const tMin = all[0]?.t ?? now;
   const tMax = all[all.length - 1]?.t ?? now + HOUR_MS;
+
+  // glucose value at an arbitrary time (linear-interpolated) → place food icons on the line
+  const sorted = all.filter((p) => Number.isFinite(p.t)).sort((a, b) => a.t - b.t);
+  const glucoseAt = (t: number) => {
+    if (!sorted.length) return Y_MIN;
+    if (t <= sorted[0].t) return sorted[0].mgdl;
+    if (t >= sorted[sorted.length - 1].t) return sorted[sorted.length - 1].mgdl;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].t >= t) {
+        const a = sorted[i - 1], b = sorted[i];
+        return a.mgdl + ((t - a.t) / ((b.t - a.t) || 1)) * (b.mgdl - a.mgdl);
+      }
+    }
+    return sorted[sorted.length - 1].mgdl;
+  };
+  const marks = (foodMarkers ?? []).filter((m) => m.t >= tMin && m.t <= tMax);
   const spanMin = Math.max(60, (tMax - tMin) / 60000);
   const viewportW = Math.max(0, width - YAXIS_W);
   const contentW = Math.max(viewportW, (spanMin / 60) * HOUR_W);
@@ -101,6 +118,18 @@ export function GlucoseChart({ raw, predicted, now, range, height = 220, width =
           {/* raw (solid) + predicted (dashed) */}
           <Path d={line(raw)} stroke={c.text} strokeWidth={2} fill="none" />
           <Path d={line(predicted)} stroke={c.accent} strokeWidth={2.5} fill="none" strokeDasharray="5 4" />
+
+          {/* food eaten — icon sits on the glucose line at the logged time */}
+          {marks.map((m, i) => {
+            const x = sx(m.t);
+            const y = sy(glucoseAt(m.t));
+            return (
+              <G key={`food${i}`}>
+                <Circle cx={x} cy={y} r={10} fill={c.surface} stroke={c.accent} strokeWidth={1.5} />
+                <SvgText x={x} y={y + 4} fontSize={11} textAnchor="middle">🍴</SvgText>
+              </G>
+            );
+          })}
         </Svg>
       </ScrollView>
     </View>

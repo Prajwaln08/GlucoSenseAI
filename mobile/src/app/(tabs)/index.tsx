@@ -27,7 +27,11 @@ export default function Home() {
   const { data, isLoading } = useQuery({ queryKey: ['timeseries'], queryFn: () => Api.timeseries(6) });
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
+  const { data: foods } = useQuery({ queryKey: ['food-recent'], queryFn: () => Api.foodLogs() });
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
+  const foodMarkers = (foods ?? [])
+    .map((f) => ({ t: Date.parse(f.logged_at) }))
+    .filter((m) => Number.isFinite(m.t));
 
   useEffect(() => { getHcStatus().then(setHc); }, []);
 
@@ -73,7 +77,7 @@ export default function Home() {
               <View style={{ flex: 1 }} />
               <Pill label={label(current)} tone={tone(current)} />
             </View>
-            <GlucoseChart raw={raw} predicted={predicted} now={now} range={range} width={width} />
+            <GlucoseChart raw={raw} predicted={predicted} now={now} range={range} foodMarkers={foodMarkers} width={width} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' }}>
               <Muted>View</Muted>
               {HORIZONS.map((h) => (
@@ -109,8 +113,8 @@ export default function Home() {
           <H2>Track food &amp; vitals</H2>
           <Card>
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <Pressable onPress={() => setSheet('food')} style={cta(c.accent)}>
-                <Body style={{ color: c.onAccent, fontWeight: '600' }}>🍽  Log food</Body>
+              <Pressable onPress={() => setSheet('food')} style={ctaGhost(c.accent)}>
+                <Body style={{ color: c.accent, fontWeight: '600' }}>🍽  Log food</Body>
               </Pressable>
               <Pressable onPress={() => setSheet('vitals')} style={ctaGhost(c.accent)}>
                 <Body style={{ color: c.accent, fontWeight: '600' }}>❤️  Log vitals</Body>
@@ -156,14 +160,17 @@ export default function Home() {
           visible={sheet !== null}
           mode={sheet ?? 'food'}
           onClose={() => setSheet(null)}
-          onLogged={() => qc.invalidateQueries({ queryKey: ['timeseries'] })}
+          onLogged={() => {
+            qc.invalidateQueries({ queryKey: ['timeseries'] });
+            qc.invalidateQueries({ queryKey: ['food-recent'] });
+            qc.invalidateQueries({ queryKey: ['recommendations'] });
+          }}
         />
       </SafeAreaView>
     </Screen>
   );
 }
 
-const cta = (accent: string) => ({ flex: 1, height: 48, borderRadius: 14, backgroundColor: accent, alignItems: 'center' as const, justifyContent: 'center' as const });
 const ctaGhost = (accent: string) => ({ flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: accent, alignItems: 'center' as const, justifyContent: 'center' as const });
 function tone(g: number) { return g < 70 ? 'warn' : g > 180 ? 'bad' : 'good'; }
 function label(g: number) { return g < 70 ? 'Low' : g > 180 ? 'High' : 'In range'; }

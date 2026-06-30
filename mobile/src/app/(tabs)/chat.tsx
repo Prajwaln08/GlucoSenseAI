@@ -80,8 +80,8 @@ export default function Chat() {
               </View>
             ) : null}
           />
-          <View style={{ flexDirection: 'row', padding: 12, gap: 8, alignItems: 'center',
-            borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface }}>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, marginBottom: 10,
+            gap: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface }}>
             <TextInput value={text} onChangeText={setText} placeholder="Message Doctor Gluco…"
               placeholderTextColor={c.textMuted} onSubmitEditing={send} returnKeyType="send"
               style={{ flex: 1, color: c.text, backgroundColor: c.surfaceAlt, borderRadius: 22,

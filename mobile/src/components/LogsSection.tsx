@@ -2,7 +2,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { Api, type VitalEntry } from '@/lib/api';
 import { useColors } from '@/lib/theme';
@@ -41,7 +41,7 @@ export function LogsSection() {
   const [calOpen, setCalOpen] = useState(false);
   const [showAllFood, setShowAllFood] = useState(false);
   const ds = dateStr(date);
-  const { data, isLoading } = useQuery({ queryKey: ['logs', ds], queryFn: () => Api.logs(ds) });
+  const { data, isLoading } = useQuery({ queryKey: ['logs', ds], queryFn: () => Api.logs(ds), staleTime: 60_000 });
 
   const food = data?.food ?? [];
   const vitals = data?.vitals ?? [];
@@ -65,7 +65,12 @@ export function LogsSection() {
 
       <View style={{ height: 1, backgroundColor: c.border, marginVertical: 12 }} />
 
-      {isLoading ? <Muted>Loading…</Muted> : empty ? <Muted>No logs on this day.</Muted> : (
+      {isLoading ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}>
+          <ActivityIndicator color={c.textMuted} />
+          <Muted>Loading your logs…</Muted>
+        </View>
+      ) : empty ? <Muted>No logs on this day.</Muted> : (
         <>
           {food.length > 0 && <Muted style={{ fontWeight: '700', marginBottom: 4 }}>Food</Muted>}
           {shownFood.map((f) => (

@@ -29,9 +29,22 @@ function startOfDay(d: Date): Date {
 function Wheel({ items, index, onIndex, width }: { items: string[]; index: number; onIndex: (i: number) => void; width: number }) {
   const c = useColors();
   const ref = useRef<ScrollView>(null);
-  const ready = useRef(false);
+  const inited = useRef(false);
   const idxAt = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
     Math.max(0, Math.min(items.length - 1, Math.round(e.nativeEvent.contentOffset.y / ITEM)));
+  const settle = (e: NativeSyntheticEvent<NativeScrollEvent>, animated: boolean) => {
+    const i = idxAt(e);
+    onIndex(i);
+    ref.current?.scrollTo({ y: i * ITEM, animated });
+  };
+  // Deterministic initial position — fire from whichever of layout/content-size
+  // comes first, deferred a tick so the offset actually applies (fixes the
+  // "sometimes lands blank/wrong" flakiness on remount).
+  const init = () => {
+    if (inited.current) return;
+    inited.current = true;
+    setTimeout(() => ref.current?.scrollTo({ y: index * ITEM, animated: false }), 0);
+  };
   return (
     <View style={{ width, height: ITEM * VISIBLE }}>
       <ScrollView
@@ -41,9 +54,14 @@ function Wheel({ items, index, onIndex, width }: { items: string[]; index: numbe
         nestedScrollEnabled
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingVertical: PAD }}
-        onContentSizeChange={() => { if (!ready.current) { ready.current = true; ref.current?.scrollTo({ y: index * ITEM, animated: false }); } }}
-        onScrollEndDrag={(e) => onIndex(idxAt(e))}
-        onMomentumScrollEnd={(e) => { const i = idxAt(e); onIndex(i); ref.current?.scrollTo({ y: i * ITEM, animated: true }); }}
+        onLayout={init}
+        onContentSizeChange={init}
+        onScrollEndDrag={(e) => {
+          const v = e.nativeEvent.velocity?.y ?? 0;
+          if (Math.abs(v) < 0.08) settle(e, true);   // released without a fling → snap now
+          else onIndex(idxAt(e));                      // fling → let momentum carry, settle on its end
+        }}
+        onMomentumScrollEnd={(e) => settle(e, true)}
       >
         {items.map((it, i) => (
           <View key={i} style={{ height: ITEM, alignItems: 'center', justifyContent: 'center' }}>

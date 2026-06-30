@@ -115,11 +115,19 @@ def timeseries(dataset: str, participant_id: str, hours: int = 6) -> dict:
         return {"now": None, "range": {"low": 70, "high": 180}, "raw": [], "predicted": []}
 
     recent = df.tail(hours * 6)   # 6 rows/hour on the 10-min grid
-    raw = [{"t": ts.isoformat(), "mgdl": round(float(g), 1)}
+
+    # Demo accounts replay historical dataset days — shift the whole window so it
+    # ends at the real "now". Keeps the chart current-looking and lets today's
+    # food markers fall in range. Only display timestamps move; values/forecasts don't.
+    last_ts = df.index[-1]
+    _now_real = pd.Timestamp.now(tz=last_ts.tz) if last_ts.tz is not None else pd.Timestamp.now()
+    shift = _now_real - last_ts
+
+    raw = [{"t": (ts + shift).isoformat(), "mgdl": round(float(g), 1)}
            for ts, g in recent["glucose_mg_dl"].items()]
 
     last_row = df.iloc[[-1]]
-    now = df.index[-1]
+    now = last_ts + shift
     current = float(last_row["glucose_mg_dl"].iloc[0])
     predicted = [{"t": now.isoformat(), "mgdl": round(current, 1), "horizon_min": 0}]
     for h in (30, 60, 90, 120):
