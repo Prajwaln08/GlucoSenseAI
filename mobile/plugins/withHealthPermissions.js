@@ -28,6 +28,28 @@ module.exports = function withHealthPermissions(config) {
     for (const name of READ_PERMISSIONS) {
       if (!have.has(name)) manifest['uses-permission'].push({ $: { 'android:name': name } });
     }
+
+    // Android 14+ (Health Connect is in the OS): the app must expose a
+    // VIEW_PERMISSION_USAGE activity-alias with the HEALTH_PERMISSIONS category,
+    // or it won't appear in Health Connect's app-permissions list. The library's
+    // own plugin only adds the (Android 13) rationale intent-filter.
+    const app = manifest.application[0];
+    app['activity-alias'] = app['activity-alias'] || [];
+    const hasAlias = app['activity-alias'].some((a) => a.$?.['android:name'] === 'ViewPermissionUsageActivity');
+    if (!hasAlias) {
+      app['activity-alias'].push({
+        $: {
+          'android:name': 'ViewPermissionUsageActivity',
+          'android:exported': 'true',
+          'android:targetActivity': '.MainActivity',
+          'android:permission': 'android.permission.START_VIEW_PERMISSION_USAGE',
+        },
+        'intent-filter': [{
+          action: [{ $: { 'android:name': 'android.intent.action.VIEW_PERMISSION_USAGE' } }],
+          category: [{ $: { 'android:name': 'android.intent.category.HEALTH_PERMISSIONS' } }],
+        }],
+      });
+    }
     return config;
   });
 };
