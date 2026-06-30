@@ -55,9 +55,12 @@ export default function Home() {
   const now = hasReal && data!.now ? Date.parse(data!.now) : mockTimeseries.now;
   const range = data?.range ?? mockTimeseries.range;
   const current = raw[raw.length - 1].mgdl;
-  const predForHorizon =
-    (hasReal ? data!.predicted.find((p) => p.horizon_min === horizon)?.mgdl : undefined)
-    ?? predicted[predicted.length - 1].mgdl;
+  // the forecast point at the selected horizon — highlighted on the chart + shown in the sentence
+  const targetT = now + horizon * 60_000;
+  const highlight = predicted.length
+    ? predicted.reduce((b, p) => (Math.abs(p.t - targetT) < Math.abs(b.t - targetT) ? p : b))
+    : undefined;
+  const predForHorizon = highlight?.mgdl ?? predicted[predicted.length - 1]?.mgdl ?? current;
   const width = Dimensions.get('window').width - 24 * 2 - 16 * 2;
 
   return (
@@ -77,7 +80,7 @@ export default function Home() {
               <View style={{ flex: 1 }} />
               <Pill label={label(current)} tone={tone(current)} />
             </View>
-            <GlucoseChart raw={raw} predicted={predicted} now={now} range={range} foodMarkers={foodMarkers} width={width} />
+            <GlucoseChart raw={raw} predicted={predicted} now={now} range={range} foodMarkers={foodMarkers} highlight={highlight} width={width} />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' }}>
               <Muted>View</Muted>
               {HORIZONS.map((h) => (

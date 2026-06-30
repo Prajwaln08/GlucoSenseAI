@@ -15,6 +15,7 @@ type Props = {
   now: number;
   range: { low: number; high: number };
   foodMarkers?: { t: number }[];
+  highlight?: { t: number; mgdl: number };
   height?: number;
   width?: number;
 };
@@ -36,7 +37,7 @@ const fmtHour = (t: number) => {
   return `${(h % 12) || 12} ${h >= 12 ? 'PM' : 'AM'}`;
 };
 
-export function GlucoseChart({ raw, predicted, now, range, foodMarkers, height = 220, width = 340 }: Props) {
+export function GlucoseChart({ raw, predicted, now, range, foodMarkers, highlight, height = 220, width = 340 }: Props) {
   const c = useColors();
   const scrollRef = useRef<ScrollView>(null);
 
@@ -130,6 +131,22 @@ export function GlucoseChart({ raw, predicted, now, range, foodMarkers, height =
               </G>
             );
           })}
+
+          {/* selected-horizon highlight (driven by the +30/+60/+90/+120 chips) */}
+          {highlight && highlight.t >= tMin && highlight.t <= tMax ? (() => {
+            const x = sx(highlight.t);
+            const y = sy(highlight.mgdl);
+            const above = y > 34;
+            const by = above ? y - 28 : y + 8;
+            return (
+              <G>
+                <Line x1={x} x2={x} y1={TOP} y2={height - BOTTOM} stroke={c.accent} strokeOpacity={0.25} strokeWidth={1} />
+                <Rect x={x - 18} y={by} width={36} height={20} rx={10} fill={c.accent} />
+                <SvgText x={x} y={by + 14} fontSize={11} fontWeight="700" fill={c.onAccent} textAnchor="middle">{Math.round(highlight.mgdl)}</SvgText>
+                <Circle cx={x} cy={y} r={6} fill={c.accent} stroke={c.surface} strokeWidth={2} />
+              </G>
+            );
+          })() : null}
         </Svg>
       </ScrollView>
     </View>
