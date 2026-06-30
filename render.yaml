@@ -19,7 +19,7 @@ services:
       - key: ALGORITHM
         value: "HS256"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "60"
+        value: "43200"   # 30 days; app enforces a sliding 5-day idle logout on top
 
       # AI coach (Claude) — server-side only; the mobile app never holds this key.
       # If ANTHROPIC_API_KEY is unset the coach falls back to safe rule-based replies.

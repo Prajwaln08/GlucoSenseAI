@@ -29,7 +29,9 @@ login_rate_limit = RateLimiter(times=10, seconds=60)
 
 SECRET_KEY   = os.environ.get("SECRET_KEY",  "change-this-in-production")
 ALGORITHM    = os.environ.get("ALGORITHM",   "HS256")
-TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+# 30 days — long enough that an active session never expires mid-use; the app
+# enforces a sliding 5-day idle logout on top of this. (Refresh tokens = future.)
+TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "43200"))
 
 _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

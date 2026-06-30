@@ -32,6 +32,20 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// On an expired/invalid token (401), hand off to the registered handler (auth
+// signs out cleanly). Login/register 401s are excluded — those are bad creds.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null) { onUnauthorized = fn; }
+api.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    const url: string = error?.config?.url ?? '';
+    const isAuthCall = url.includes('/auth/token') || url.includes('/auth/register');
+    if (error?.response?.status === 401 && !isAuthCall) onUnauthorized?.();
+    return Promise.reject(error);
+  },
+);
+
 // ── Types ───────────────────────────────────────────────────────────────────
 export type Profile = {
   email: string; name?: string; first_name?: string; last_name?: string;
