@@ -204,6 +204,28 @@ class WearableActivity(Base):
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
 
 
+class WearableSample(Base):
+    """Intraday (realtime) watch reading from Health Connect — timestamped, NOT daily.
+
+    One row per observation: HR samples, SpO₂ readings, and interval-binned steps/calories/
+    distance land here with their real timestamp. This is what gives the model real
+    ``hr_roll_mean_30m`` features (vs the flat daily average in WearableActivity). Deduped
+    by (user, timestamp); metrics are merged into the same instant when they coincide.
+    """
+    __tablename__ = "wearable_samples"
+
+    id              = Column(String, primary_key=True, default=_uuid)
+    user_id_fk      = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    timestamp       = Column(DateTime(timezone=True), nullable=False, index=True)
+    hr_bpm          = Column(Float,   nullable=True)
+    spo2_pct        = Column(Float,   nullable=True)
+    steps           = Column(Integer, nullable=True)
+    calories_active = Column(Float,   nullable=True)
+    distance_m      = Column(Float,   nullable=True)
+    provider        = Column(String,  nullable=True)   # "health_connect"
+    created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+
 class CgmSession(Base):
     """A single CGM sensor journey (~14 days) — drives the personalization lifecycle.
 

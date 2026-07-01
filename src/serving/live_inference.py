@@ -49,7 +49,7 @@ def build_live_frame(db: Session, user) -> Optional[pd.DataFrame]:
     meal_type_encoded, amount_consumed_pct, + demographics. Timestamp index (UTC).
     Returns None if the user has no CGM readings.
     """
-    from src.db.models import CgmReading, FoodLog, WearableActivity
+    from src.db.models import CgmReading, FoodLog, WearableActivity, WearableSample
 
     cgm = (db.query(CgmReading)
            .filter(CgmReading.user_id == user.id)
@@ -60,26 +60,43 @@ def build_live_frame(db: Session, user) -> Optional[pd.DataFrame]:
     df = pd.DataFrame([{"timestamp": r.timestamp, "glucose_mg_dl": r.glucose_mgdl} for r in cgm])
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df = df.set_index("timestamp").sort_index()
-    df["date"] = df.index.date
 
-    # Daily watch summaries → broadcast onto the CGM timeline.
-    acts = (db.query(WearableActivity)
-            .filter(WearableActivity.user_id_fk == user.id).all())
-    if acts:
-        adf = pd.DataFrame([{
-            "date": pd.to_datetime(a.calendar_date).date(),
-            "hr": a.hr_avg_bpm,
-            # mets is a MEDIAN col → a per-minute rate proxy is fine broadcast flat
-            "mets": (float(a.calories_active) / 1440.0) if a.calories_active else np.nan,
-            "cal_day": float(a.calories_active) if a.calories_active else np.nan,
-        } for a in acts])
-        df = df.reset_index().merge(adf, on="date", how="left").set_index("timestamp")
-        # calories_burned is a SUM col → spread the daily total across the day's readings
-        # so the per-day sum is preserved (window sums stay proportional).
-        counts = df.groupby("date")["glucose_mg_dl"].transform("size").replace(0, np.nan)
-        df["calories_burned"] = df["cal_day"] / counts
-        df = df.drop(columns=["cal_day"])
-    df = df.drop(columns=["date"])
+    # Watch signals — PREFER intraday samples (real hr_roll_* features); fall back to the
+    # flat daily WearableActivity broadcast only when no realtime samples exist.
+    try:
+        samples = (db.query(WearableSample)
+                   .filter(WearableSample.user_id_fk == user.id)
+                   .order_by(WearableSample.timestamp).all())
+    except Exception:                                  # noqa: BLE001 - table may not be migrated yet
+        db.rollback()
+        samples = []
+    if samples:
+        sdf = pd.DataFrame([{
+            "timestamp": s.timestamp,
+            "hr": s.hr_bpm,
+            "calories_burned": s.calories_active,   # interval kcal → summed per 10-min window
+        } for s in samples])
+        sdf["timestamp"] = pd.to_datetime(sdf["timestamp"], utc=True)
+        sdf = sdf.set_index("timestamp").sort_index()
+        sdf = sdf[~sdf.index.duplicated(keep="last")]
+        sdf["mets"] = sdf["calories_burned"]         # light proxy; consistent train↔serve
+        df = df.join(sdf, how="outer").sort_index()
+    else:
+        df["date"] = df.index.date
+        acts = (db.query(WearableActivity)
+                .filter(WearableActivity.user_id_fk == user.id).all())
+        if acts:
+            adf = pd.DataFrame([{
+                "date": pd.to_datetime(a.calendar_date).date(),
+                "hr": a.hr_avg_bpm,
+                "mets": (float(a.calories_active) / 1440.0) if a.calories_active else np.nan,
+                "cal_day": float(a.calories_active) if a.calories_active else np.nan,
+            } for a in acts])
+            df = df.reset_index().merge(adf, on="date", how="left").set_index("timestamp")
+            counts = df.groupby("date")["glucose_mg_dl"].transform("size").replace(0, np.nan)
+            df["calories_burned"] = df["cal_day"] / counts
+            df = df.drop(columns=["cal_day"])
+        df = df.drop(columns=["date"], errors="ignore")
 
     # Food logs at their own timestamps (macros SUM per window downstream).
     foods = (db.query(FoodLog)

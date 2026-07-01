@@ -108,6 +108,7 @@ def glucose_timeseries(hours: int = 6, user: User = Depends(get_current_user),
         return timeseries_for_user(db, user, hours=hours)
     except Exception as exc:                           # noqa: BLE001
         log.warning(f"live timeseries failed for user={user.id}: {exc}")
+        db.rollback()   # clear any poisoned txn (e.g. cgm_sessions not migrated) before fallback
         # Safe fallback: raw CGM only, never a fake number.
         readings = sorted(crud.get_recent_cgm_readings(db, user.id, limit=hours * 12),
                           key=lambda r: r.timestamp)
@@ -222,9 +223,18 @@ class HCActivity(BaseModel):
     spo2_avg: Optional[float] = None
     sleep_hours: Optional[float] = None
 
+class HCSample(BaseModel):
+    t: str                          # ISO 8601 instant
+    hr_bpm: Optional[float] = None
+    spo2_pct: Optional[float] = None
+    steps: Optional[int] = None
+    calories_active: Optional[float] = None
+    distance_m: Optional[float] = None
+
 class HealthConnectSync(BaseModel):
     glucose: list[HCGlucose] = []
     activity: list[HCActivity] = []
+    samples: list[HCSample] = []    # intraday (realtime) watch samples → wearable_samples
 
 
 def _parse_instant(s: str) -> datetime:
@@ -255,5 +265,37 @@ def health_connect_sync(body: HealthConnectSync,
     ) for a in body.activity]
     n_act = upsert_activity(db, days)
 
-    log.info(f"health-connect sync user={user.id}: +{n_cgm} cgm, {n_act} activity days")
-    return {"cgm_inserted": n_cgm, "activity_days": n_act}
+    # Intraday (realtime) samples → wearable_samples (drives real HR features).
+    # Non-fatal: if the table isn't migrated yet, the daily activity sync above still succeeds.
+    n_samples = 0
+    try:
+        from src.integrations.ingest import ingest_wearable_samples
+        sample_rows = [{
+            "timestamp": _parse_instant(s.t), "hr_bpm": s.hr_bpm, "spo2_pct": s.spo2_pct,
+            "steps": s.steps, "calories_active": s.calories_active, "distance_m": s.distance_m,
+        } for s in body.samples]
+        n_samples = ingest_wearable_samples(db, user.id, sample_rows)
+    except Exception as exc:                           # noqa: BLE001
+        db.rollback()
+        log.warning(f"wearable samples ingest skipped (table not migrated?): {exc}")
+
+    log.info(f"health-connect sync user={user.id}: +{n_cgm} cgm, {n_act} activity days, +{n_samples} samples")
+    return {"cgm_inserted": n_cgm, "activity_days": n_act, "samples_inserted": n_samples}
+
+
+@router.get("/wearable/recent")
+def wearable_recent(limit: int = 5, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Latest intraday watch samples — proves realtime data is flowing to the DB."""
+    from src.db.models import WearableSample
+    try:
+        rows = (db.query(WearableSample)
+                .filter(WearableSample.user_id_fk == user.id)
+                .order_by(WearableSample.timestamp.desc()).limit(min(limit, 50)).all())
+    except Exception:                                  # noqa: BLE001 - table may not be migrated yet
+        db.rollback()
+        return []
+    return [{
+        "t": r.timestamp.isoformat(), "hr_bpm": r.hr_bpm, "spo2_pct": r.spo2_pct,
+        "steps": r.steps, "calories_active": r.calories_active, "distance_m": r.distance_m,
+    } for r in rows]

@@ -82,6 +82,46 @@ def ingest_cgm_readings(
     return saved
 
 
+def ingest_wearable_samples(
+    db: Session,
+    user_id: str,
+    rows: list[dict],
+    *,
+    commit: bool = True,
+) -> int:
+    """Upsert intraday wearable samples by (user_id, timestamp). Returns # new rows.
+
+    Each row is a dict: {"timestamp": datetime, "hr_bpm"?, "spo2_pct"?, "steps"?,
+    "calories_active"?, "distance_m"?, "provider"?}. Coinciding metrics merge into the
+    same instant; re-syncing the same window is idempotent.
+    """
+    from src.db.models import WearableSample
+    new = 0
+    for r in rows:
+        ts = r.get("timestamp")
+        if ts is None:
+            continue
+        existing = (
+            db.query(WearableSample)
+            .filter(WearableSample.user_id_fk == user_id, WearableSample.timestamp == ts)
+            .first()
+        )
+        target = existing or WearableSample(
+            id=str(uuid.uuid4()), user_id_fk=user_id, timestamp=ts,
+            provider=r.get("provider", "health_connect"), created_at=_now(),
+        )
+        for field in ("hr_bpm", "spo2_pct", "steps", "calories_active", "distance_m"):
+            val = r.get(field)
+            if val is not None:
+                setattr(target, field, val)
+        if existing is None:
+            db.add(target)
+            new += 1
+    if commit:
+        db.commit()
+    return new
+
+
 def upsert_activity(
     db: Session,
     days: list[ActivityIngest],

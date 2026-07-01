@@ -68,6 +68,7 @@ export type Timeseries = {
   days_have?: number; days_need?: number;   // collecting
   have?: number; need?: number;             // warming_up (readings)
 };
+export type WearableSample = { t: string; hr_bpm?: number; spo2_pct?: number; steps?: number; calories_active?: number; distance_m?: number };
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 export type Recommendation = { id: string; kind: 'diet' | 'activity'; title: string; body: string };
 export type FoodEntry = { id: string; meal_type: string; description?: string; quantity?: number; portion_size?: string; logged_at?: string };
@@ -124,8 +125,13 @@ export const Api = {
   },
   async syncHealthConnect(payload: {
     activity: { date: string; steps?: number; calories_active?: number; distance_m?: number; hr_avg_bpm?: number; spo2_avg?: number; sleep_hours?: number }[];
-  }): Promise<{ activity_days: number }> {
+    samples?: WearableSample[];
+  }): Promise<{ activity_days: number; samples_inserted?: number }> {
     const { data } = await api.post('/health-connect/sync', payload);
+    return data;
+  },
+  async wearableRecent(limit = 5): Promise<WearableSample[]> {
+    const { data } = await api.get('/wearable/recent', { params: { limit } });
     return data;
   },
   async coachChat(message: string): Promise<{ reply: string; actions: any[] }> {

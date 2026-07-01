@@ -18,6 +18,7 @@ export type SyncResult = {
   reason?: 'platform' | 'unavailable' | 'denied' | 'error';
   message?: string;
   activity_days?: number;
+  samples?: number;
 };
 
 // ── Connection status (persisted locally) ─────────────────────────────────────
@@ -92,8 +93,13 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
     const read = async (rt: string): Promise<any[]> => {
       try { return (await HC.readRecords(rt as any, filter)).records as any[]; } catch { return []; }
     };
+    // Read every record type ONCE, then build BOTH the daily rollup and the realtime samples.
+    const [stepsR, calR, distR, hrR, spo2R, sleepR] = await Promise.all([
+      read('Steps'), read('ActiveCaloriesBurned'), read('Distance'),
+      read('HeartRate'), read('OxygenSaturation'), read('SleepSession'),
+    ]);
 
-    // ── Watch activity → aggregate per day (no glucose — that's CGM's job) ──
+    // ── Daily rollup (Logs + coach) ──
     type Acc = { steps: number; kcal: number; meters: number; hr: number[]; spo2: number[]; sleepMs: number };
     const byDay = new Map<string, Acc>();
     const acc = (k: string): Acc => {
@@ -101,15 +107,12 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
       if (!a) { a = { steps: 0, kcal: 0, meters: 0, hr: [], spo2: [], sleepMs: 0 }; byDay.set(k, a); }
       return a;
     };
-    for (const r of await read('Steps')) acc(dayKey(r.startTime)).steps += r.count ?? 0;
-    for (const r of await read('ActiveCaloriesBurned')) acc(dayKey(r.startTime)).kcal += r.energy?.inKilocalories ?? 0;
-    for (const r of await read('Distance')) acc(dayKey(r.startTime)).meters += r.distance?.inMeters ?? 0;
-    for (const r of await read('HeartRate'))
-      for (const s of r.samples ?? []) acc(dayKey(s.time ?? r.startTime)).hr.push(s.beatsPerMinute);
-    for (const r of await read('OxygenSaturation')) acc(dayKey(r.time)).spo2.push(r.percentage);
-    for (const r of await read('SleepSession'))
-      acc(dayKey(r.startTime)).sleepMs += new Date(r.endTime).getTime() - new Date(r.startTime).getTime();
-
+    for (const r of stepsR) acc(dayKey(r.startTime)).steps += r.count ?? 0;
+    for (const r of calR) acc(dayKey(r.startTime)).kcal += r.energy?.inKilocalories ?? 0;
+    for (const r of distR) acc(dayKey(r.startTime)).meters += r.distance?.inMeters ?? 0;
+    for (const r of hrR) for (const s of r.samples ?? []) acc(dayKey(s.time ?? r.startTime)).hr.push(s.beatsPerMinute);
+    for (const r of spo2R) acc(dayKey(r.time)).spo2.push(r.percentage);
+    for (const r of sleepR) acc(dayKey(r.startTime)).sleepMs += new Date(r.endTime).getTime() - new Date(r.startTime).getTime();
     const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
     const activity = [...byDay.entries()].map(([date, a]) => ({
       date,
@@ -121,9 +124,25 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
       sleep_hours: a.sleepMs ? a.sleepMs / 3_600_000 : undefined,
     }));
 
-    const res = await Api.syncHealthConnect({ activity });
+    // ── Realtime intraday samples → per-minute buckets (merged metrics) ──
+    const byMin = new Map<string, any>();
+    const put = (t: string | undefined, patch: Record<string, number | undefined>) => {
+      if (!t) return;
+      const d = new Date(t); if (isNaN(d.getTime())) return;
+      d.setSeconds(0, 0);
+      const k = d.toISOString();
+      byMin.set(k, { ...(byMin.get(k) ?? { t: k }), ...patch });
+    };
+    for (const r of hrR) for (const s of r.samples ?? []) put(s.time ?? r.startTime, { hr_bpm: s.beatsPerMinute });
+    for (const r of spo2R) put(r.time, { spo2_pct: r.percentage });
+    for (const r of stepsR) put(r.startTime, { steps: r.count });
+    for (const r of calR) put(r.startTime, { calories_active: r.energy?.inKilocalories });
+    for (const r of distR) put(r.startTime, { distance_m: r.distance?.inMeters });
+    const samples = [...byMin.values()].sort((a, b) => (a.t < b.t ? -1 : 1));
+
+    const res = await Api.syncHealthConnect({ activity, samples });
     await markConnected();
-    return { ok: true, activity_days: res.activity_days };
+    return { ok: true, activity_days: res.activity_days, samples: samples.length };
   } catch (e: any) {
     return { ok: false, reason: 'error', message: e?.message ?? 'Could not read Health Connect.' };
   }

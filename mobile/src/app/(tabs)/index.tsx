@@ -42,6 +42,13 @@ export default function Home() {
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
   const { data: foods } = useQuery({ queryKey: ['food-recent'], queryFn: () => Api.foodLogs() });
+  // Realtime watch readings — refreshes every 30s while connected (proves live data flows).
+  const { data: recent } = useQuery({
+    queryKey: ['wearable-recent'],
+    queryFn: () => Api.wearableRecent(5),
+    enabled: hc.connected,
+    refetchInterval: hc.connected ? 30_000 : false,
+  });
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
   useEffect(() => { getHcStatus().then(setHc); }, []);
@@ -61,7 +68,9 @@ export default function Home() {
     if (res.ok) {
       setHc({ connected: true, lastSync: new Date().toISOString() });
       qc.invalidateQueries({ queryKey: ['recommendations'] });
-      Alert.alert('Health Connect', `Synced ${res.activity_days ?? 0} day(s) of activity — steps, heart rate, sleep & more.`);
+      qc.invalidateQueries({ queryKey: ['wearable-recent'] });   // realtime readings list
+      qc.invalidateQueries({ queryKey: ['timeseries'] });        // intraday HR feeds the forecast
+      Alert.alert('Health Connect', `Synced ${res.samples ?? 0} realtime readings + ${res.activity_days ?? 0} day(s) of activity.`);
     } else if (res.reason === 'denied' || res.reason === 'unavailable') {
       Alert.alert('Health Connect', res.message ?? 'Could not sync.',
         [{ text: 'Not now', style: 'cancel' }, { text: 'Open Health Connect', onPress: () => openHealthConnect() }]);
@@ -252,12 +261,38 @@ export default function Home() {
           <Ionicons name="watch-outline" size={18} color={c.accent} />
           <Body style={{ fontWeight: '600' }}>Watch connected</Body>
         </View>
-        <Muted>
-          Your watch + food logs are syncing. A watch-only glucose estimate is coming soon — until then, glucose forecasts need a CGM (switch to Personalized).
+        <RecentReadings c={c} recent={recent} />
+        <Muted style={{ marginTop: 10 }}>
+          A watch-only glucose estimate is coming soon — until then, glucose forecasts need a CGM (switch to Personalized).
         </Muted>
       </Card>
     );
   }
+}
+
+function RecentReadings({ c, recent }: any) {
+  if (!recent?.length) {
+    return <Muted style={{ marginTop: 4 }}>Waiting for readings — tap “Sync now” below.</Muted>;
+  }
+  return (
+    <View style={{ marginTop: 8 }}>
+      <Muted style={{ marginBottom: 6 }}>Latest readings (live)</Muted>
+      {recent.map((r: any, i: number) => {
+        const val = r.hr_bpm != null ? `${Math.round(r.hr_bpm)}` : r.spo2_pct != null ? `${Math.round(r.spo2_pct)}` : '—';
+        const unit = r.hr_bpm != null ? 'bpm' : r.spo2_pct != null ? '% SpO₂' : '';
+        return (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5,
+            borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border }}>
+            <Ionicons name="heart" size={14} color={c.accent} style={{ marginRight: 8 }} />
+            <Body style={{ fontWeight: '700', minWidth: 36 }}>{val}</Body>
+            <Muted style={{ marginLeft: 4 }}>{unit}</Muted>
+            <View style={{ flex: 1 }} />
+            <Muted>{syncedLabel(r.t)}</Muted>
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
 // ── Small presentational helpers ─────────────────────────────────────────────
