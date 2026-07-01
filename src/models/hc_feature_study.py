@@ -43,10 +43,16 @@ def run_hc_feature_study(
     models_dir=None,
     reports_dir=None,
     version: Optional[str] = None,
+    feature_sets: Optional[list] = None,    # default: full cumulative F1→F7; pass a subset for A
     table_by_mode: Optional[dict] = None,   # inject pre-built tables (testing); else prep.prepare
 ) -> dict:
-    """Run the cumulative feature study. Returns a summary + the consolidated results rows."""
+    """Run the feature study. Returns a summary + the consolidated results rows.
+
+    ``feature_sets`` defaults to the full cumulative F1→F7 (CUMULATIVE_HC). For the fast
+    "scope A" run pass a single set, e.g. ``[("full_hc", HC_GROUPS)]``.
+    """
     models = models or list(GLUCOSE_MODELS)
+    sets = feature_sets or CUMULATIVE_HC
     rows: list[dict] = []
 
     for tier in tiers:
@@ -58,7 +64,7 @@ def run_hc_feature_study(
             from src.data import prepare as prep
             table = prep.prepare(mode=mode, datasets=("cgmacros",), users=users).table
 
-        for fset_name, groups in CUMULATIVE_HC:
+        for fset_name, groups in sets:
             # post_cgm mode has no glucose features → drop that group; skip an empty stage.
             g = [x for x in groups if not (mode == "post_cgm" and x == "glucose")]
             if not g:
