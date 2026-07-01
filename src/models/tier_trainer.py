@@ -40,6 +40,7 @@ from src.config import (
 )
 from src.data.splitter import population_day_split
 from src.data.step4_features import get_xy
+from src.data.feature_groups import select_feature_cols
 from src.data.step5_selection import fit_feature_selector
 from src.data.eligibility import TIER_CONFIG
 from src.models.glucose_models import get_glucose_model
@@ -99,10 +100,13 @@ class TierResult:
 class TierTrainer:
     def __init__(self, tier: str, horizon_min: int,
                  models_dir: Path = MODELS_DIR, reports_dir: Optional[Path] = None,
-                 version: Optional[str] = None):
+                 version: Optional[str] = None, feature_groups: Optional[list] = None):
         if tier not in TIER_CONFIG:
             raise ValueError(f"Unknown tier {tier!r}. Choose from {list(TIER_CONFIG)}.")
         from src.config import REPORTS_DIR
+        # None → use all engineered features; a list of group names (see feature_groups.py)
+        # restricts X to those groups (for the cumulative feature-engineering study / @hc).
+        self.feature_groups = feature_groups
         self.tier = tier
         self.cfg = TIER_CONFIG[tier]
         self.mode = self.cfg["mode"]
@@ -126,6 +130,7 @@ class TierTrainer:
         X_tr, y_tr = get_xy(train_df, self.horizon_min, self.mode)
         X_va, y_va = get_xy(val_df,   self.horizon_min, self.mode)
         X_te, y_te = get_xy(test_df,  self.horizon_min, self.mode)
+        X_tr, X_va, X_te = self._restrict((X_tr, X_va, X_te))
         if len(X_tr) == 0 or len(X_va) == 0:
             raise RuntimeError(f"{scope}: empty train/val split "
                                f"(train={len(X_tr)}, val={len(X_va)}).")
@@ -209,6 +214,7 @@ class TierTrainer:
         train_df, val_df, _ = self._split(table)
         X_tr, y_tr = get_xy(train_df, self.horizon_min, self.mode)
         X_va, y_va = get_xy(val_df,   self.horizon_min, self.mode)
+        X_tr, X_va = self._restrict((X_tr, X_va))
         if len(X_tr) == 0 or len(X_va) == 0:
             raise RuntimeError(f"{scope}: empty train/val for tuning {model_name}.")
 
@@ -283,6 +289,17 @@ class TierTrainer:
         return winner, results
 
     # ── Internals ─────────────────────────────────────────────────────────────
+
+    def _restrict(self, Xs: tuple):
+        """Restrict feature columns to self.feature_groups (keeps the current-glucose anchor
+        for cgm_active delta→absolute reconstruction). No-op when feature_groups is None."""
+        if self.feature_groups is None:
+            return Xs
+        cols = list(Xs[0].columns)
+        keep = select_feature_cols(cols, self.feature_groups)
+        if self.mode == "cgm_active" and "glucose_mg_dl" in cols and "glucose_mg_dl" not in keep:
+            keep = ["glucose_mg_dl", *keep]
+        return tuple(X[keep] for X in Xs)
 
     def _split(self, table: pd.DataFrame):
         user_dfs = [g for _, g in table.groupby("uid", sort=False)]
