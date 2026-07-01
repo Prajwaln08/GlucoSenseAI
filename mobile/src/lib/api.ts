@@ -56,9 +56,17 @@ export type Profile = {
   medications?: string; onboarding_complete: boolean;
 };
 export type GlucosePoint = { t: string; mgdl: number; horizon_min?: number };
+export type ForecastStatus = 'ready' | 'warming_up' | 'collecting' | 'no_data' | 'no_source';
+export type TrainingInfo = { phase?: string; status?: string; since?: string } | null;
 export type Timeseries = {
   now: string | null; range: { low: number; high: number };
   raw: GlucosePoint[]; predicted: GlucosePoint[];
+  // Personalization lifecycle (real users). Demo omits these.
+  status?: ForecastStatus;
+  phase?: string;
+  training?: TrainingInfo;
+  days_have?: number; days_need?: number;   // collecting
+  have?: number; need?: number;             // warming_up (readings)
 };
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 export type Recommendation = { id: string; kind: 'diet' | 'activity'; title: string; body: string };

@@ -41,6 +41,7 @@ def ingest_cgm_readings(
     typically first via webhook/poll, xDRIP only fills genuine gaps.
     """
     saved = 0
+    inserted_by_user: dict[str, list] = {}
     for r in readings:
         exists = (
             db.query(CgmReading.id)
@@ -63,7 +64,19 @@ def ingest_cgm_readings(
             created_at=_now(),
         ))
         saved += 1
+        inserted_by_user.setdefault(r.user_id, []).append(r.timestamp)
         cgm_readings_ingested.labels(source=r.source).inc()
+
+    # Maintain the per-user CGM sensor-session lifecycle (drives personalization phases).
+    # Non-fatal: a session-tracking hiccup must never block glucose ingestion.
+    if inserted_by_user:
+        try:
+            from src.personalization.lifecycle import update_session_on_ingest
+            for uid, tss in inserted_by_user.items():
+                update_session_on_ingest(db, uid, tss, commit=False)
+        except Exception:  # noqa: BLE001
+            pass
+
     if commit:
         db.commit()
     return saved

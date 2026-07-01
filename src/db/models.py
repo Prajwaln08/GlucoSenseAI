@@ -131,8 +131,11 @@ class RetrainJob(Base):
     error_msg     = Column(Text,    nullable=True)
     # Versioning + audit
     artefact_dir  = Column(Text,    nullable=True)   # path to artifacts; enables model restore
-    triggered_by  = Column(String,  nullable=True)   # "auto_drift" | "patient_request"
+    triggered_by  = Column(String,  nullable=True)   # "auto_drift" | "patient_request" | "lifecycle"
     version_tag   = Column(String,  nullable=True)   # "v1", "v2", … per user/dataset/horizon
+    # Personalization lifecycle (real-user per-phase models)
+    phase        = Column(String,  nullable=True)   # "while_on_cgm" | "post_cgm"
+    session_id   = Column(String,  nullable=True)   # CgmSession this model was trained from
 
     user = relationship("User", back_populates="retrain_jobs", foreign_keys=[user_id_fk])
 
@@ -199,6 +202,31 @@ class WearableActivity(Base):
     sleep_score     = Column(Integer, nullable=True)  # sleep quality score (0–100, if available)
     provider        = Column(String,  nullable=True)
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+
+class CgmSession(Base):
+    """A single CGM sensor journey (~14 days) — drives the personalization lifecycle.
+
+    Started when a CGM reading arrives with no active session; extended on every new
+    reading; ended after ~14 days (sensor life) or after a silence gap. ``n_days`` (span of
+    the session in days) is what the phase state machine reads to decide when to train the
+    personal ``while_on_cgm`` model (~8 days) and pre-emptively the ``post_cgm`` model (day 13).
+    """
+    __tablename__ = "cgm_sessions"
+
+    id               = Column(String, primary_key=True, default=_uuid)
+    user_id_fk       = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    started_at       = Column(DateTime(timezone=True), nullable=False)
+    first_reading_at = Column(DateTime(timezone=True), nullable=False)
+    last_reading_at  = Column(DateTime(timezone=True), nullable=False, index=True)
+    ended_at         = Column(DateTime(timezone=True), nullable=True)
+    n_readings       = Column(Integer, nullable=False, default=0)
+    n_days           = Column(Float,   nullable=False, default=0.0)   # span (last − first) in days
+    status           = Column(String,  nullable=False, default="active")  # "active" | "ended"
+    end_reason       = Column(String,  nullable=True)   # "expired" | "silent" | "manual"
+    created_at       = Column(DateTime(timezone=True), default=_now, nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id_fk])
 
 
 class Vitals(Base):

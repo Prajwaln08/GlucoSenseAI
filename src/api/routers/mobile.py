@@ -100,14 +100,21 @@ def glucose_timeseries(hours: int = 6, user: User = Depends(get_current_user),
             return timeseries(user.dataset, user.user_id, hours=hours)
         except Exception as exc:                       # noqa: BLE001
             log.warning(f"timeseries failed for {user.dataset}/{user.user_id}: {exc}")
-    # Real users → raw from their own CGM stream (predictions arrive once Health
-    # Connect / a CGM is connected in Phase 3).
-    readings = crud.get_recent_cgm_readings(db, user.id, limit=hours * 6)
-    readings = sorted(readings, key=lambda r: r.timestamp)   # chronological for the chart
-    now = readings[-1].timestamp.isoformat() if readings else None
-    return {"now": now, "range": {"low": 70, "high": 180},
-            "raw": [{"t": r.timestamp.isoformat(), "mgdl": r.glucose_mgdl} for r in readings],
-            "predicted": []}
+    # Real users → personalized serving from their live DB data. The personalization
+    # lifecycle shows ACTUAL CGM until their personal model is trained, then a personal
+    # forecast (never a population guess in the CGM flow). See src/serving/live_inference.
+    from src.serving.live_inference import timeseries_for_user
+    try:
+        return timeseries_for_user(db, user, hours=hours)
+    except Exception as exc:                           # noqa: BLE001
+        log.warning(f"live timeseries failed for user={user.id}: {exc}")
+        # Safe fallback: raw CGM only, never a fake number.
+        readings = sorted(crud.get_recent_cgm_readings(db, user.id, limit=hours * 12),
+                          key=lambda r: r.timestamp)
+        now = readings[-1].timestamp.isoformat() if readings else None
+        return {"now": now, "range": {"low": 70, "high": 180},
+                "raw": [{"t": r.timestamp.isoformat(), "mgdl": r.glucose_mgdl} for r in readings],
+                "predicted": [], "status": "no_data" if readings else "no_source"}
 
 
 # ── Vitals logging ────────────────────────────────────────────────────────────

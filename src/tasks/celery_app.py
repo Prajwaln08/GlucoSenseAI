@@ -27,11 +27,15 @@ BACKEND_URL = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"
 # staleness window so xDRIP fallback is detected promptly.
 CGM_POLL_INTERVAL_SEC = int(os.environ.get("CGM_POLL_INTERVAL_SEC", "600"))
 
+# How often the personalization scheduler runs (seconds): closes stale CGM sessions
+# and enqueues personal model training at the day-8 / day-13 thresholds.
+PERSONALIZATION_TICK_SEC = int(os.environ.get("PERSONALIZATION_TICK_SEC", "1800"))
+
 celery_app = Celery(
     "glucosense",
     broker=BROKER_URL,
     backend=BACKEND_URL,
-    include=["src.tasks.retrain", "src.tasks.cgm_poll"],
+    include=["src.tasks.retrain", "src.tasks.cgm_poll", "src.personalization.training"],
 )
 
 celery_app.conf.update(
@@ -46,11 +50,17 @@ celery_app.conf.update(
     task_routes={
         "src.tasks.retrain.*": {"queue": "glucosense"},
         "src.tasks.cgm_poll.*": {"queue": "glucosense"},
+        "src.personalization.training.*": {"queue": "glucosense"},
     },
     beat_schedule={
         "junction-glucose-pull": {
             "task": "src.tasks.cgm_poll.poll_junction_glucose",
             "schedule": float(CGM_POLL_INTERVAL_SEC),
+            "options": {"queue": "glucosense"},
+        },
+        "personalization-tick": {
+            "task": "src.personalization.training.personalization_tick",
+            "schedule": float(PERSONALIZATION_TICK_SEC),
             "options": {"queue": "glucosense"},
         },
     },
