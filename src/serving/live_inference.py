@@ -34,6 +34,11 @@ log = get_logger(__name__)
 
 HORIZONS = (30, 60, 90, 120)
 
+# Population base model (watch+food, no glucose) — served post-CGM when a user has no personal
+# model but watch is flowing. This is the @hc base trained by Scope A.
+BASE_TIER = "without_cgm"
+BASE_SCOPE = "population/cgmacros_hc/full_hc"
+
 _MEAL_TYPE = {"breakfast": 1, "lunch": 2, "dinner": 3, "snack": 4, "other": 0}
 
 _REGISTRY = MODELS_DIR / "registry.json"
@@ -235,9 +240,24 @@ def timeseries_for_user(db: Session, user, hours: int = 6) -> dict:
     if not raw:
         return {**base, "status": "no_data"}
 
-    # Personal model not ready yet → show actual CGM only (never a population guess).
+    # ── WATCH GATE (product rule) — watch data is MANDATORY for any forecast + training.
+    # No recent watch data → show the ACTUAL CGM curve only, never a forecast.
+    wr = lc.watch_readiness(db, user.id)
+    base = {**base, "watch": wr}
+    if not wr["ready"]:
+        return {**base, "status": "no_watch"}
+
     model_phase = "post_cgm" if phase in (lc.POST_CGM_TRAINING, lc.POST_CGM_PERSONAL) else "while_on_cgm"
     if not _has(model_phase):
+        # Post-CGM with no personal model (watch present now, but the journey lacked it) →
+        # fall back to the population base model. CGM still live → keep collecting/learning.
+        if model_phase == "post_cgm":
+            try:
+                out = _forecast_base(db, user)
+                if out.get("status") == "ready":
+                    return {**base, **out}
+            except Exception as exc:                    # noqa: BLE001
+                log.warning(f"base fallback failed for user={user.id}: {exc}")
         sess = lc.latest_session(db, user.id)
         need = lc.POST_CGM_MIN_DAYS if model_phase == "post_cgm" else lc.WHILE_ON_CGM_MIN_DAYS
         return {**base, "status": "collecting",
@@ -291,3 +311,37 @@ def _forecast(db: Session, user, model_phase: str) -> dict:
                           "mgdl": round(mgdl, 1), "horizon_min": h})
 
     return {"status": "ready", "predicted": predicted}
+
+
+def _forecast_base(db: Session, user) -> dict:
+    """Population base model (without_cgm@hc, watch+food) — post-CGM fallback when the user has
+    no personal model but watch is flowing. Predicts ABSOLUTE glucose from recent watch+food."""
+    frame = build_live_frame(db, user)
+    if frame is None:
+        return {"status": "no_data"}
+    feat_df = featurize(frame, mode="post_cgm").sort_index()
+    if feat_df.empty:
+        return {"status": "no_data"}
+    reg = _read_registry()
+    slot = reg.get("tiers", {}).get(BASE_TIER, {}).get(BASE_SCOPE, {})
+    horizons = [h for h in HORIZONS if f"{h}min" in slot]
+    if not horizons:
+        return {"status": "collecting"}                 # base model not trained yet
+
+    last = feat_df.iloc[[-1]]
+    now = pd.to_datetime(feat_df.index[-1])
+    g = feat_df["glucose_mg_dl"].dropna()
+    predicted = []
+    if len(g):                                          # anchor the chart at last known glucose
+        predicted.append({"t": now.isoformat(), "mgdl": round(float(g.iloc[-1]), 1), "horizon_min": 0})
+    for h in horizons:
+        model, mfeat, scaler, imputer = _load_personal_bundle(BASE_TIER, BASE_SCOPE, h, reg)
+        X = last.reindex(columns=mfeat)
+        if imputer is not None:
+            X = pd.DataFrame(imputer.transform(X), columns=mfeat, index=X.index)
+        if scaler is not None:
+            X = pd.DataFrame(scaler.transform(X), columns=mfeat, index=X.index)
+        out = float(np.ravel(model.predict(X))[0])      # post_cgm mode → absolute glucose
+        predicted.append({"t": (now + pd.Timedelta(minutes=h)).isoformat(),
+                          "mgdl": round(out, 1), "horizon_min": h})
+    return {"status": "ready", "predicted": predicted, "model": "base"}

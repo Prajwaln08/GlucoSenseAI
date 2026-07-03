@@ -196,10 +196,37 @@ def enqueue_personal(db, user, phase: str, session) -> None:
             pass
 
 
+def _has_journey_watch(db, user_id: str, sess) -> bool:
+    """Did the user wear the watch enough during the CGM journey? (training gate — product rule).
+
+    Coverage = fraction of journey days with ≥1 HR sample ≥ eligibility.WATCH_MIN_COVERAGE (0.30).
+    No watch during the journey → no personal model is ever trained.
+    """
+    import math
+    from src.db.models import WearableSample
+    from src.data.eligibility import WATCH_MIN_COVERAGE
+    try:
+        rows = (db.query(WearableSample.timestamp)
+                .filter(WearableSample.user_id_fk == user_id,
+                        WearableSample.hr_bpm.isnot(None),
+                        WearableSample.timestamp >= sess.started_at).all())
+    except Exception:                                    # noqa: BLE001 - table may be unmigrated
+        db.rollback()
+        return False
+    if not rows:
+        return False
+    days_with = {lc._as_utc(r[0]).date() for r in rows}
+    journey_days = max(1, math.ceil(sess.n_days or 1))
+    return len(days_with) / journey_days >= WATCH_MIN_COVERAGE
+
+
 def _maybe_enqueue(db, user) -> int:
     """Enqueue any personal training this user is now due for. Returns # enqueued."""
     sess = lc.latest_session(db, user.id)
     if sess is None:
+        return 0
+    # WATCH GATE (product rule): no watch worn during the journey → no personal training, ever.
+    if not _has_journey_watch(db, user.id, sess):
         return 0
     n = 0
     if sess.status == "active":

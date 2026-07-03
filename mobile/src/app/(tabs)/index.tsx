@@ -210,6 +210,7 @@ export default function Home() {
     return (
       <Card>
         {training && <TrainingBanner c={c} phase={training.phase} />}
+        {status === 'no_watch' && <WatchGateNotice c={c} watch={ts?.watch} onConnect={() => flashConnector('hc')} />}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 8 }}>
           <Body style={{ fontSize: 40, fontWeight: '700' }}>{current != null ? current.toFixed(0) : '—'}</Body>
           <Body style={{ color: c.textMuted, marginBottom: 8 }}>mg/dL now</Body>
@@ -238,7 +239,7 @@ export default function Home() {
               </Muted>
             )}
           </>
-        ) : (
+        ) : status === 'no_watch' ? null : (
           <LearningNote c={c} status={status} ts={ts} />
         )}
       </Card>
@@ -305,6 +306,27 @@ function LearningNote({ c, status, ts }: any) {
     text = `Warming up — ${ts?.have ?? 0}/${ts?.need ?? 0} readings before the first forecast.`;
   }
   return <Muted style={{ marginTop: 12 }}>{text}</Muted>;
+}
+
+function WatchGateNotice({ c, watch, onConnect }: any) {
+  const have = watch?.have ?? 0;
+  return (
+    <View style={{ backgroundColor: c.surfaceAlt, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <Ionicons name="watch-outline" size={18} color={c.accent} />
+        <Body style={{ fontWeight: '700', flex: 1 }}>Connect your watch to turn on forecasts</Body>
+      </View>
+      <Muted>
+        Your CGM is streaming — but forecasts need live watch data (heart rate). {have > 0
+          ? `Only ${have} recent reading${have === 1 ? '' : 's'} — keep the watch on & syncing.`
+          : 'No recent watch data is coming in.'} Until then you’ll see your actual CGM readings only.
+      </Muted>
+      <Pressable onPress={onConnect}
+        style={{ marginTop: 10, backgroundColor: c.accent, borderRadius: 10, paddingVertical: 11, alignItems: 'center' }}>
+        <Body style={{ color: c.onAccent, fontWeight: '600' }}>Connect / sync watch</Body>
+      </Pressable>
+    </View>
+  );
 }
 
 function TrainingBanner({ c, phase }: any) {

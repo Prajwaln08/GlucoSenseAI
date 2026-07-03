@@ -56,8 +56,9 @@ export type Profile = {
   medications?: string; onboarding_complete: boolean;
 };
 export type GlucosePoint = { t: string; mgdl: number; horizon_min?: number };
-export type ForecastStatus = 'ready' | 'warming_up' | 'collecting' | 'no_data' | 'no_source';
+export type ForecastStatus = 'ready' | 'warming_up' | 'collecting' | 'no_watch' | 'no_data' | 'no_source';
 export type TrainingInfo = { phase?: string; status?: string; since?: string } | null;
+export type WatchStatus = { ready: boolean; full?: boolean; have: number; need: number; last_at?: string | null } | null;
 export type Timeseries = {
   now: string | null; range: { low: number; high: number };
   raw: GlucosePoint[]; predicted: GlucosePoint[];
@@ -65,6 +66,7 @@ export type Timeseries = {
   status?: ForecastStatus;
   phase?: string;
   training?: TrainingInfo;
+  watch?: WatchStatus;                      // watch-gate readiness
   days_have?: number; days_need?: number;   // collecting
   have?: number; need?: number;             // warming_up (readings)
 };

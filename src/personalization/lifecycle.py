@@ -15,7 +15,7 @@ See docs/personalization_lifecycle_plan.md.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -28,6 +28,14 @@ SENSOR_SILENCE_HOURS  = 2.0    # gap between readings → the session is conside
 WHILE_ON_CGM_MIN_DAYS = 8.0    # train the personal while_on_cgm model at/after this many days
 POST_CGM_PRETRAIN_DAY = 13.0   # pre-emptively train the personal post_cgm model here (zero-gap)
 POST_CGM_MIN_DAYS     = 12.0   # minimum data to train a post_cgm model on a short journey
+
+# ── Watch-gate: watch (HR) data is MANDATORY for any forecast + any training ──
+# Serving gate (recent window). Mirrors the HR-continuity gate in serving/inference.py.
+WATCH_MIN_HR_READINGS  = 8      # min HR points in the recent window to allow a forecast
+WATCH_FULL_HR_READINGS = 24     # full-fidelity (below → "warming up")
+WATCH_HR_GAP_LIMIT_MIN = 30.0   # max gap between consecutive HR readings → watch is "flowing"
+WATCH_WINDOW_HOURS     = 3.0    # recent lookback window (matches the glucose n_lags depth)
+# Training gate reuses eligibility.WATCH_MIN_COVERAGE (0.30) over the journey.
 
 # Phase labels (also used by the API/serving/scheduler).
 NO_SOURCE             = "NO_SOURCE"
@@ -153,6 +161,40 @@ def end_stale_sessions(db: Session, *, now: Optional[datetime] = None, commit: b
     if commit and closed:
         db.commit()
     return closed
+
+
+def watch_readiness(db: Session, user_id: str, *, window_hours: float = WATCH_WINDOW_HOURS,
+                    now: Optional[datetime] = None) -> dict:
+    """Is watch (HR) data flowing for the recent window? Gates ALL forecasts (product rule).
+
+    Ready requires ≥ WATCH_MIN_HR_READINGS intraday HR readings within ``window_hours``, with no
+    gap > WATCH_HR_GAP_LIMIT_MIN AND a fresh latest reading. Returns
+    ``{ready, full, have, need, gap_ok, last_at}``. Non-fatal if the samples table is unmigrated.
+    """
+    from src.db.models import WearableSample
+    ref = _as_utc(now) or _now()
+    cutoff = ref - timedelta(hours=window_hours)
+    try:
+        rows = (db.query(WearableSample.timestamp)
+                .filter(WearableSample.user_id_fk == user_id,
+                        WearableSample.hr_bpm.isnot(None),
+                        WearableSample.timestamp >= cutoff)
+                .order_by(WearableSample.timestamp).all())
+    except Exception:                                    # noqa: BLE001 - table may be unmigrated
+        db.rollback()
+        rows = []
+    ts = [_as_utc(r[0]) for r in rows]
+    have = len(ts)
+    # No gap > limit between consecutive readings...
+    gap_ok = all((b - a).total_seconds() / 60.0 <= WATCH_HR_GAP_LIMIT_MIN
+                 for a, b in zip(ts, ts[1:]))
+    # ...and the latest reading is fresh (watch is actually still on).
+    fresh = have >= 1 and (ref - ts[-1]).total_seconds() / 60.0 <= WATCH_HR_GAP_LIMIT_MIN
+    ready = have >= WATCH_MIN_HR_READINGS and gap_ok and fresh
+    return {"ready": bool(ready), "full": have >= WATCH_FULL_HR_READINGS,
+            "have": have, "need": WATCH_MIN_HR_READINGS,
+            "gap_ok": bool(gap_ok and fresh),
+            "last_at": ts[-1].isoformat() if ts else None}
 
 
 def resolve_phase(db: Session, user, has_personal) -> str:
