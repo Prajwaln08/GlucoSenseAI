@@ -97,6 +97,9 @@ def build_live_frame(db: Session, user) -> Optional[pd.DataFrame]:
                 "mets": (float(a.calories_active) / 1440.0) if a.calories_active else np.nan,
                 "cal_day": float(a.calories_active) if a.calories_active else np.nan,
             } for a in acts])
+            # One row per date — else a many-to-many merge fans out (duplicates) every glucose
+            # row when >1 provider reported the same day. Aggregate across providers.
+            adf = adf.groupby("date", as_index=False).agg({"hr": "mean", "mets": "mean", "cal_day": "sum"})
             df = df.reset_index().merge(adf, on="date", how="left").set_index("timestamp")
             counts = df.groupby("date")["glucose_mg_dl"].transform("size").replace(0, np.nan)
             df["calories_burned"] = df["cal_day"] / counts
@@ -276,13 +279,15 @@ def _forecast(db: Session, user, model_phase: str) -> dict:
     if frame is None:
         return {"status": "no_data"}
     mode = "cgm_active" if model_phase == "while_on_cgm" else "post_cgm"
-    feat_df = featurize(frame, mode=mode)
-    feat_df = feat_df[feat_df["glucose_mg_dl"].notna()].sort_index()
+    feat_df = featurize(frame, mode=mode).sort_index()
+    # cgm_active needs the current glucose (delta anchor) → keep only glucose-bearing rows.
+    # post_cgm has no live glucose → forecast from the LATEST watch+food row (fresh 'now').
+    if model_phase == "while_on_cgm":
+        feat_df = feat_df[feat_df["glucose_mg_dl"].notna()]
     if feat_df.empty:
         return {"status": "no_data"}
 
     last = feat_df.iloc[[-1]]
-    current = float(last["glucose_mg_dl"].iloc[0])
     now = pd.to_datetime(feat_df.index[-1])
     reg = _read_registry()
     scope = personal_scope(user.id)
@@ -296,7 +301,11 @@ def _forecast(db: Session, user, model_phase: str) -> dict:
     if len(feat_df) < need:
         return {"status": "warming_up", "have": len(feat_df), "need": need}
 
-    predicted = [{"t": now.isoformat(), "mgdl": round(current, 1), "horizon_min": 0}]
+    predicted = []
+    current = None
+    if model_phase == "while_on_cgm":
+        current = float(last["glucose_mg_dl"].iloc[0])
+        predicted.append({"t": now.isoformat(), "mgdl": round(current, 1), "horizon_min": 0})
     for h in horizons:
         model, mfeat, scaler, imputer = _load_personal_bundle(model_phase, scope, h, reg)
         X = last.reindex(columns=mfeat)
@@ -305,12 +314,15 @@ def _forecast(db: Session, user, model_phase: str) -> dict:
         if scaler is not None:
             X = pd.DataFrame(scaler.transform(X), columns=mfeat, index=X.index)
         out = float(np.ravel(model.predict(X))[0])
-        # while_on_cgm predicts a delta; post_cgm predicts absolute glucose.
+        # while_on_cgm predicts a delta off current; post_cgm predicts absolute glucose.
         mgdl = current + out if model_phase == "while_on_cgm" else out
         predicted.append({"t": (now + pd.Timedelta(minutes=h)).isoformat(),
                           "mgdl": round(mgdl, 1), "horizon_min": h})
 
-    return {"status": "ready", "predicted": predicted}
+    result = {"status": "ready", "predicted": predicted}
+    if model_phase != "while_on_cgm":
+        result["now"] = now.isoformat()   # post_cgm: chart 'now' = current time, not last CGM
+    return result
 
 
 def _forecast_base(db: Session, user) -> dict:
@@ -330,10 +342,8 @@ def _forecast_base(db: Session, user) -> dict:
 
     last = feat_df.iloc[[-1]]
     now = pd.to_datetime(feat_df.index[-1])
-    g = feat_df["glucose_mg_dl"].dropna()
+    # No stale horizon-0 anchor: the sensor is gone, so we don't label an old glucose as "now".
     predicted = []
-    if len(g):                                          # anchor the chart at last known glucose
-        predicted.append({"t": now.isoformat(), "mgdl": round(float(g.iloc[-1]), 1), "horizon_min": 0})
     for h in horizons:
         model, mfeat, scaler, imputer = _load_personal_bundle(BASE_TIER, BASE_SCOPE, h, reg)
         X = last.reindex(columns=mfeat)
@@ -344,4 +354,4 @@ def _forecast_base(db: Session, user) -> dict:
         out = float(np.ravel(model.predict(X))[0])      # post_cgm mode → absolute glucose
         predicted.append({"t": (now + pd.Timedelta(minutes=h)).isoformat(),
                           "mgdl": round(out, 1), "horizon_min": h})
-    return {"status": "ready", "predicted": predicted, "model": "base"}
+    return {"status": "ready", "predicted": predicted, "model": "base", "now": now.isoformat()}

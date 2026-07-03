@@ -26,6 +26,7 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [hc, setHc] = useState<HcStatus>({ connected: false });
   const [mode, setMode] = useState<Mode>('personalized');
+  const [modeHydrated, setModeHydrated] = useState(false);
 
   // Auto-scroll + highlight the right connector when a CTA is tapped.
   const scrollRef = useRef<ScrollView>(null);
@@ -52,7 +53,7 @@ export default function Home() {
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
   useEffect(() => { getHcStatus().then(setHc); }, []);
-  useEffect(() => { AsyncStorage.getItem(MODE_KEY).then((v) => { if (v === 'basic' || v === 'personalized') setMode(v); }); }, []);
+  useEffect(() => { AsyncStorage.getItem(MODE_KEY).then((v) => { if (v === 'basic' || v === 'personalized') setMode(v); setModeHydrated(true); }); }, []);
   const pickMode = useCallback((m: Mode) => { setMode(m); AsyncStorage.setItem(MODE_KEY, m); }, []);
 
   const flashConnector = useCallback((which: 'cgm' | 'hc') => {
@@ -123,8 +124,10 @@ export default function Home() {
             ))}
           </View>
 
-          {/* A — the graph / status area */}
-          {mode === 'personalized'
+          {/* A — the graph / status area (wait for the saved mode to avoid a wrong-mode flash) */}
+          {!modeHydrated
+            ? <Card><View style={{ alignItems: 'center', paddingVertical: 28 }}><ActivityIndicator color={c.accent} /></View></Card>
+            : mode === 'personalized'
             ? renderPersonalized()
             : renderBasic()}
 
@@ -211,12 +214,19 @@ export default function Home() {
       <Card>
         {training && <TrainingBanner c={c} phase={training.phase} />}
         {status === 'no_watch' && <WatchGateNotice c={c} watch={ts?.watch} onConnect={() => flashConnector('hc')} />}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 8 }}>
-          <Body style={{ fontSize: 40, fontWeight: '700' }}>{current != null ? current.toFixed(0) : '—'}</Body>
-          <Body style={{ color: c.textMuted, marginBottom: 8 }}>mg/dL now</Body>
-          <View style={{ flex: 1 }} />
-          {current != null && <Pill label={label(current)} tone={tone(current)} />}
-        </View>
+        {(() => {
+          const stale = raw.length > 0 && (Date.now() - now) / 60000 > 20;   // CGM reads ~5min
+          return (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 8 }}>
+              <Body style={{ fontSize: 40, fontWeight: '700', opacity: stale ? 0.5 : 1 }}>{current != null ? current.toFixed(0) : '—'}</Body>
+              <Body style={{ color: c.textMuted, marginBottom: 8 }}>
+                {stale ? `mg/dL · ${syncedLabel(new Date(now).toISOString())}` : 'mg/dL now'}
+              </Body>
+              <View style={{ flex: 1 }} />
+              {current != null && !stale && <Pill label={label(current)} tone={tone(current)} />}
+            </View>
+          );
+        })()}
 
         <GlucoseChart raw={raw} predicted={status === 'ready' ? predicted : []} now={now}
           range={range} foodMarkers={foodMarkers} highlight={status === 'ready' ? hl : undefined} width={width} />
@@ -272,19 +282,22 @@ export default function Home() {
 }
 
 function RecentReadings({ c, recent }: any) {
-  if (!recent?.length) {
-    return <Muted style={{ marginTop: 4 }}>Waiting for readings — tap “Sync now” below.</Muted>;
+  // Only show samples that carry a vital (HR / SpO₂) — step-only minutes aren't "readings".
+  const rows = (recent ?? []).filter((r: any) => r.hr_bpm != null || r.spo2_pct != null).slice(0, 5);
+  if (!rows.length) {
+    return <Muted style={{ marginTop: 4 }}>Waiting for heart-rate readings — tap “Sync now” below.</Muted>;
   }
   return (
     <View style={{ marginTop: 8 }}>
       <Muted style={{ marginBottom: 6 }}>Latest readings (live)</Muted>
-      {recent.map((r: any, i: number) => {
-        const val = r.hr_bpm != null ? `${Math.round(r.hr_bpm)}` : r.spo2_pct != null ? `${Math.round(r.spo2_pct)}` : '—';
-        const unit = r.hr_bpm != null ? 'bpm' : r.spo2_pct != null ? '% SpO₂' : '';
+      {rows.map((r: any, i: number) => {
+        const isHr = r.hr_bpm != null;
+        const val = isHr ? `${Math.round(r.hr_bpm)}` : `${Math.round(r.spo2_pct)}`;
+        const unit = isHr ? 'bpm' : '% SpO₂';
         return (
           <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5,
             borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border }}>
-            <Ionicons name="heart" size={14} color={c.accent} style={{ marginRight: 8 }} />
+            <Ionicons name={isHr ? 'heart' : 'water'} size={14} color={c.accent} style={{ marginRight: 8 }} />
             <Body style={{ fontWeight: '700', minWidth: 36 }}>{val}</Body>
             <Muted style={{ marginLeft: 4 }}>{unit}</Muted>
             <View style={{ flex: 1 }} />
@@ -304,6 +317,8 @@ function LearningNote({ c, status, ts }: any) {
     text = `Learning your patterns — ${Math.floor(ts.days_have ?? 0)}/${Math.round(ts.days_need)} days. Your forecast turns on automatically.`;
   } else if (status === 'warming_up') {
     text = `Warming up — ${ts?.have ?? 0}/${ts?.need ?? 0} readings before the first forecast.`;
+  } else if (status === 'no_data') {
+    text = 'Couldn’t refresh your forecast just now — showing your latest readings.';
   }
   return <Muted style={{ marginTop: 12 }}>{text}</Muted>;
 }

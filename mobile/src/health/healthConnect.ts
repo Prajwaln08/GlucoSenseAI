@@ -81,10 +81,15 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
     // already granted), so check the ACTUAL granted set as the source of truth.
     let grantedPerms: any[] = [];
     try { grantedPerms = await HC.getGrantedPermissions(); } catch { /* ignore */ }
-    const canRead = grantedPerms.some((p: any) => p?.accessType === 'read');
-    if (!canRead) {
+    // Heart rate specifically gates every forecast — a partial grant without it looks
+    // "connected" but forecasts stay stuck. Require HeartRate read, not just any read.
+    const hasHR = grantedPerms.some((p: any) => p?.accessType === 'read' && p?.recordType === 'HeartRate');
+    if (!hasHR) {
+      const anyRead = grantedPerms.some((p: any) => p?.accessType === 'read');
       return { ok: false, reason: 'denied',
-        message: 'No access yet. Tap "Allow" in the Health Connect dialog — or open Health Connect → App permissions → GlucoSense and turn on the data types, then tap Sync now again.' };
+        message: anyRead
+          ? 'Heart Rate access is off — forecasts need it. Open Health Connect → App permissions → GlucoSense and enable Heart rate, then tap Sync now again.'
+          : 'No access yet. Tap "Allow" in the Health Connect dialog — or open Health Connect → App permissions → GlucoSense and turn on the data types (Heart rate is required), then tap Sync now again.' };
     }
 
     const endTime = new Date().toISOString();

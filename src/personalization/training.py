@@ -203,21 +203,25 @@ def _has_journey_watch(db, user_id: str, sess) -> bool:
     No watch during the journey → no personal model is ever trained.
     """
     import math
+    from collections import Counter
     from src.db.models import WearableSample
     from src.data.eligibility import WATCH_MIN_COVERAGE
     try:
         rows = (db.query(WearableSample.timestamp)
                 .filter(WearableSample.user_id_fk == user_id,
                         WearableSample.hr_bpm.isnot(None),
-                        WearableSample.timestamp >= sess.started_at).all())
+                        WearableSample.timestamp >= sess.started_at,
+                        WearableSample.timestamp <= sess.last_reading_at).all())  # journey window only
     except Exception:                                    # noqa: BLE001 - table may be unmigrated
         db.rollback()
         return False
     if not rows:
         return False
-    days_with = {lc._as_utc(r[0]).date() for r in rows}
+    # A day counts only if it has a MEANINGFUL number of HR samples (not a single ping).
+    per_day = Counter(lc._as_utc(r[0]).date() for r in rows)
+    good_days = sum(1 for n in per_day.values() if n >= lc.WATCH_MIN_HR_READINGS)
     journey_days = max(1, math.ceil(sess.n_days or 1))
-    return len(days_with) / journey_days >= WATCH_MIN_COVERAGE
+    return min(1.0, good_days / journey_days) >= WATCH_MIN_COVERAGE
 
 
 def _maybe_enqueue(db, user) -> int:

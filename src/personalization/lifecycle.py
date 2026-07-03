@@ -106,6 +106,14 @@ def update_session_on_ingest(
     ts = sorted(t for t in (_as_utc(x) for x in timestamps) if t is not None)
     if not ts:
         return None
+    # Split at internal silence gaps: only the most-recent contiguous run belongs to the
+    # CURRENT sensor session (earlier runs are a prior/historical session), so a
+    # gap-straddling backfill batch doesn't inflate this session's span/n_days.
+    seg_start = 0
+    for i in range(1, len(ts)):
+        if (ts[i] - ts[i - 1]).total_seconds() / 3600.0 > SENSOR_SILENCE_HOURS:
+            seg_start = i
+    ts = ts[seg_start:]
     earliest, latest = ts[0], ts[-1]
 
     sess = active_session(db, user_id)
@@ -132,6 +140,8 @@ def update_session_on_ingest(
     else:
         if latest > _as_utc(sess.last_reading_at):
             sess.last_reading_at = latest
+        if earliest < _as_utc(sess.first_reading_at):   # backfill earlier than session start
+            sess.first_reading_at = earliest
         sess.n_readings = (sess.n_readings or 0) + len(ts)
         sess.n_days = _span_days(sess.first_reading_at, sess.last_reading_at)
 

@@ -43,22 +43,11 @@ def build_context(db: Session, user: User) -> dict:
     glucose: dict | None = None
     predicted: dict | None = None
 
-    if user.dataset and user.user_id:
-        # Demo/replay account → model-backed series.
-        try:
-            from src.serving.tier_inference import timeseries
-            ts = timeseries(user.dataset, user.user_id, hours=6)
-            glucose = _glucose_stats([p["mgdl"] for p in ts["raw"]])
-            fut = [p for p in ts["predicted"] if p.get("horizon_min")]
-            if fut:
-                pick = next((p for p in fut if p["horizon_min"] == 60), fut[-1])
-                predicted = {"horizon_min": pick["horizon_min"], "mgdl": pick["mgdl"]}
-        except Exception:                                  # noqa: BLE001
-            glucose = None
-    else:
-        readings = crud.get_recent_cgm_readings(db, user.id, limit=36)
-        readings = sorted(readings, key=lambda r: r.timestamp)
-        glucose = _glucose_stats([r.glucose_mgdl for r in readings])
+    # Glucose from the user's ACTUAL CGM readings only (no dataset/replay shortcut — keeps the
+    # coach consistent with Home, which is real-serving only).
+    readings = crud.get_recent_cgm_readings(db, user.id, limit=36)
+    readings = sorted(readings, key=lambda r: r.timestamp)
+    glucose = _glucose_stats([r.glucose_mgdl for r in readings])
 
     foods = crud.get_food_logs(db, user.id, limit=5)
     recent_food = [{
