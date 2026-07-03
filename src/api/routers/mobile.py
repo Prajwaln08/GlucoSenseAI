@@ -93,16 +93,9 @@ def update_profile(body: ProfileUpdate, user: User = Depends(get_current_user),
 @router.get("/glucose/timeseries")
 def glucose_timeseries(hours: int = 6, user: User = Depends(get_current_user),
                        db: Session = Depends(get_db)):
-    # Demo/replay accounts (linked to a research participant) → model-backed series.
-    if user.dataset and user.user_id:
-        from src.serving.tier_inference import timeseries
-        try:
-            return timeseries(user.dataset, user.user_id, hours=hours)
-        except Exception as exc:                       # noqa: BLE001
-            log.warning(f"timeseries failed for {user.dataset}/{user.user_id}: {exc}")
-    # Real users → personalized serving from their live DB data. The personalization
-    # lifecycle shows ACTUAL CGM until their personal model is trained, then a personal
-    # forecast (never a population guess in the CGM flow). See src/serving/live_inference.
+    # ALL accounts → real, watch-gated serving from live DB data. No dataset/replay shortcut:
+    # predictions only ever come from the user's actual CGM + watch, subject to the watch-gate.
+    # (Dataset linkage is used for model TRAINING/research only, never for serving canned data.)
     from src.serving.live_inference import timeseries_for_user
     try:
         return timeseries_for_user(db, user, hours=hours)
