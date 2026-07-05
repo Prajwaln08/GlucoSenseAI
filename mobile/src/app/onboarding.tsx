@@ -96,21 +96,22 @@ export default function Onboarding() {
     if (!f.weightKg.trim()) e.weightKg = 'Required';
     else if (!inRange(Number(f.weightKg), 20, 400)) e.weightKg = 'Weight must be 20–400 kg';
 
-    if (!f.bpSys.trim()) e.bpSys = 'Required';
-    else if (!inRange(Number(f.bpSys), 70, 250)) e.bpSys = '70–250';
-    if (!f.bpDia.trim()) e.bpDia = 'Required';
-    else if (!inRange(Number(f.bpDia), 40, 150)) e.bpDia = '40–150';
+    // BP and HbA1c are optional — validate only when filled in
+    if (f.bpSys.trim() || f.bpDia.trim()) {
+      if (!f.bpSys.trim()) e.bpSys = 'Enter both';
+      else if (!inRange(Number(f.bpSys), 70, 250)) e.bpSys = '70–250';
+      if (!f.bpDia.trim()) e.bpDia = 'Enter both';
+      else if (!inRange(Number(f.bpDia), 40, 150)) e.bpDia = '40–150';
+    }
 
-    if (!f.bpDate.trim()) e.bpDate = 'Required';
-    else {
+    if (f.bpDate.trim()) {
       const [d, m, y] = f.bpDate.split('/');
       const bd = makeDate(Number(d), Number(m), Number(y));
       if (!bd || (y || '').length !== 4) e.bpDate = 'Use dd/mm/yyyy';
       else if (bd > new Date()) e.bpDate = 'Can’t be in the future';
     }
 
-    if (!f.hba1c.trim()) e.hba1c = 'Required';
-    else if (!inRange(Number(f.hba1c), 3, 20)) e.hba1c = 'HbA1c must be 3–20%';
+    if (f.hba1c.trim() && !inRange(Number(f.hba1c), 3, 20)) e.hba1c = 'HbA1c must be 3–20%';
     return e;
   }
 
@@ -128,8 +129,10 @@ export default function Onboarding() {
         date_of_birth: iso,                 // backend derives name + age
         gender,
         height_cm: Number(f.heightCm), weight_kg: Number(f.weightKg),
-        bp_systolic: Number(f.bpSys), bp_diastolic: Number(f.bpDia),
-        hba1c: Number(f.hba1c), diabetes_type: diabetes,
+        bp_systolic: f.bpSys.trim() ? Number(f.bpSys) : undefined,
+        bp_diastolic: f.bpDia.trim() ? Number(f.bpDia) : undefined,
+        hba1c: f.hba1c.trim() ? Number(f.hba1c) : undefined,
+        diabetes_type: diabetes,
         medical_history: conditions.length ? conditions.join(', ') : undefined,
         medications: f.medications.trim() || undefined,
       });
@@ -181,7 +184,7 @@ export default function Onboarding() {
             </View>
           </View>
 
-          <Body style={{ fontWeight: '600', marginBottom: 8 }}>Blood pressure (last recorded)</Body>
+          <Body style={{ fontWeight: '600', marginBottom: 8 }}>Blood pressure (last recorded) — optional</Body>
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1 }}>
               <Field label="Systolic" value={f.bpSys} onChangeText={onInt('bpSys', 250)} keyboardType="number-pad" placeholder="128" error={errors.bpSys} />
@@ -194,7 +197,7 @@ export default function Onboarding() {
             </View>
           </View>
 
-          <Field label="HbA1c (%)" value={f.hba1c} onChangeText={onDec('hba1c')} keyboardType="decimal-pad" placeholder="6.1" error={errors.hba1c} />
+          <Field label="HbA1c (%) — optional" value={f.hba1c} onChangeText={onDec('hba1c')} keyboardType="decimal-pad" placeholder="6.1" error={errors.hba1c} />
 
           <Body style={{ fontWeight: '600', marginBottom: 10 }}>Diabetes type</Body>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>

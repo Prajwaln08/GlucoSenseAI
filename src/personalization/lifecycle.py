@@ -32,7 +32,8 @@ POST_CGM_MIN_DAYS     = 12.0   # minimum data to train a post_cgm model on a sho
 # ── Watch-gate: watch (HR) data is MANDATORY for any forecast + any training ──
 # Serving gate (recent window). Mirrors the HR-continuity gate in serving/inference.py.
 WATCH_MIN_HR_READINGS  = 8      # min HR points in the recent window to allow a forecast
-WATCH_FULL_HR_READINGS = 24     # full-fidelity (below → "warming up")
+WATCH_FULL_HR_READINGS = 16     # full-fidelity; 3h window at the watch's ~10-min HC cadence
+                                # tops out at ~18 points, so 24 was unreachable
 WATCH_HR_GAP_LIMIT_MIN = 30.0   # max gap between consecutive HR readings → watch is "flowing"
 WATCH_WINDOW_HOURS     = 3.0    # recent lookback window (matches the glucose n_lags depth)
 # Training gate reuses eligibility.WATCH_MIN_COVERAGE (0.30) over the journey.

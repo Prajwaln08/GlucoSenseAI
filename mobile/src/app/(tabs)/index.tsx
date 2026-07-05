@@ -43,13 +43,6 @@ export default function Home() {
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
   const { data: foods } = useQuery({ queryKey: ['food-recent'], queryFn: () => Api.foodLogs() });
-  // Realtime watch readings — refreshes every 30s while connected (proves live data flows).
-  const { data: recent } = useQuery({
-    queryKey: ['wearable-recent'],
-    queryFn: () => Api.wearableRecent(5),
-    enabled: hc.connected,
-    refetchInterval: hc.connected ? 30_000 : false,
-  });
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
 
   useEffect(() => { getHcStatus().then(setHc); }, []);
@@ -69,8 +62,7 @@ export default function Home() {
     if (res.ok) {
       setHc({ connected: true, lastSync: new Date().toISOString() });
       qc.invalidateQueries({ queryKey: ['recommendations'] });
-      qc.invalidateQueries({ queryKey: ['wearable-recent'] });   // realtime readings list
-      qc.invalidateQueries({ queryKey: ['timeseries'] });        // intraday HR feeds the forecast
+      qc.invalidateQueries({ queryKey: ['timeseries'] });        // intraday HR feeds the forecast + watch-gate progress
       Alert.alert('Health Connect', `Synced ${res.samples ?? 0} realtime readings + ${res.activity_days ?? 0} day(s) of activity.`);
     } else if (res.reason === 'denied' || res.reason === 'unavailable') {
       Alert.alert('Health Connect', res.message ?? 'Could not sync.',
@@ -118,7 +110,7 @@ export default function Home() {
                 style={{ flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center',
                   backgroundColor: mode === mVal ? c.surface : 'transparent' }}>
                 <Body style={{ fontWeight: '600', color: mode === mVal ? c.text : c.textMuted }}>
-                  {mVal === 'personalized' ? 'Personalized · CGM' : 'Basic · Watch'}
+                  {mVal === 'personalized' ? 'Personalized CGM' : 'Virtual CGM'}
                 </Body>
               </Pressable>
             ))}
@@ -262,7 +254,7 @@ export default function Home() {
       return (
         <EmptyState c={c}
           icon="watch-outline" title="Connect your watch"
-          body="Basic mode uses your watch (heart rate, steps, sleep) plus your food logs. Connect Health Connect to get started."
+          body="Virtual CGM mode uses your watch (heart rate, steps, sleep) plus your food logs. Connect Health Connect to get started."
           cta="Connect your watch" onPress={() => flashConnector('hc')} />
       );
     }
@@ -272,39 +264,51 @@ export default function Home() {
           <Ionicons name="watch-outline" size={18} color={c.accent} />
           <Body style={{ fontWeight: '600' }}>Watch connected</Body>
         </View>
-        <RecentReadings c={c} recent={recent} />
+        <WatchWaitProgress c={c} watch={ts?.watch} />
         <Muted style={{ marginTop: 10 }}>
-          A watch-only glucose estimate is coming soon — until then, glucose forecasts need a CGM (switch to Personalized).
+          Virtual CGM estimates your glucose from your watch data using our standard base model. For forecasts tuned to your body, switch to Personalized.
         </Muted>
       </Card>
     );
   }
 }
 
-function RecentReadings({ c, recent }: any) {
-  // Only show samples that carry a vital (HR / SpO₂) — step-only minutes aren't "readings".
-  const rows = (recent ?? []).filter((r: any) => r.hr_bpm != null || r.spo2_pct != null).slice(0, 5);
-  if (!rows.length) {
-    return <Muted style={{ marginTop: 4 }}>Waiting for heart-rate readings — tap “Sync now” below.</Muted>;
+function WatchWaitProgress({ c, watch }: any) {
+  // How far the watch gate is from unlocking predictions: needs `need` recent
+  // heart-rate readings, flowing without long gaps (see lifecycle watch-gate).
+  const have = watch?.have ?? 0;
+  const need = watch?.need ?? 8;
+  const ready = !!watch?.ready;
+
+  if (ready) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+        <Ionicons name="checkmark-circle" size={16} color={c.accent} />
+        <Body style={{ fontWeight: '600', flex: 1 }}>
+          Watch data is flowing — your Virtual CGM estimate is on its way.
+        </Body>
+      </View>
+    );
   }
+
+  const left = Math.max(0, need - have);
+  const pct = Math.min(1, need ? have / need : 0);
+  const mins = left * 10;   // watch writes HR to Health Connect roughly every 10 min
   return (
-    <View style={{ marginTop: 8 }}>
-      <Muted style={{ marginBottom: 6 }}>Latest readings (live)</Muted>
-      {rows.map((r: any, i: number) => {
-        const isHr = r.hr_bpm != null;
-        const val = isHr ? `${Math.round(r.hr_bpm)}` : `${Math.round(r.spo2_pct)}`;
-        const unit = isHr ? 'bpm' : '% SpO₂';
-        return (
-          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5,
-            borderTopWidth: i === 0 ? 0 : 1, borderTopColor: c.border }}>
-            <Ionicons name={isHr ? 'heart' : 'water'} size={14} color={c.accent} style={{ marginRight: 8 }} />
-            <Body style={{ fontWeight: '700', minWidth: 36 }}>{val}</Body>
-            <Muted style={{ marginLeft: 4 }}>{unit}</Muted>
-            <View style={{ flex: 1 }} />
-            <Muted>{syncedLabel(r.t)}</Muted>
-          </View>
-        );
-      })}
+    <View style={{ marginTop: 4 }}>
+      <Body style={{ fontWeight: '600' }}>
+        {have === 0
+          ? 'Your first prediction is about 80 minutes away'
+          : `Almost there — ${left} reading${left === 1 ? '' : 's'} (~${mins} min) to go`}
+      </Body>
+      <View style={{ height: 8, borderRadius: 4, backgroundColor: c.surfaceAlt, marginTop: 10, overflow: 'hidden' }}>
+        <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', backgroundColor: c.accent }} />
+      </View>
+      <Muted style={{ marginTop: 10 }}>
+        {have === 0
+          ? 'Wear your watch and tap “Sync now” — predictions unlock after 8 heart-rate readings.'
+          : `${have} of ${need} readings in — keep the watch on and sync again soon.`}
+      </Muted>
     </View>
   );
 }

@@ -136,6 +136,13 @@ export const Api = {
     const { data } = await api.get('/wearable/recent', { params: { limit } });
     return data;
   },
+  async modelInputs(hours = 3): Promise<{
+    step_minutes: number; columns: string[];
+    rows: ({ t: string } & Record<string, number | null>)[];
+  }> {
+    const { data } = await api.get('/me/model-inputs', { params: { hours } });
+    return data;
+  },
   async coachChat(message: string): Promise<{ reply: string; actions: any[] }> {
     const { data } = await api.post('/coach/chat', { message });
     return data;

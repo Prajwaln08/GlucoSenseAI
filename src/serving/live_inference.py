@@ -46,23 +46,25 @@ _REGISTRY = MODELS_DIR / "registry.json"
 
 # ── DB → raw wide frame (shared with per-phase training) ─────────────────────
 
-def build_live_frame(db: Session, user) -> Optional[pd.DataFrame]:
+def build_live_frame(db: Session, user, *, require_cgm: bool = True) -> Optional[pd.DataFrame]:
     """Assemble a CGMacros-style wide frame from the user's live DB rows.
 
     Columns mirror the CGMacros loader so the standard grid/impute/feature steps
     apply unchanged: glucose_mg_dl, hr, mets, calories_burned, meal macros,
     meal_type_encoded, amount_consumed_pct, + demographics. Timestamp index (UTC).
-    Returns None if the user has no CGM readings.
+    Returns None if the user has no CGM readings (unless ``require_cgm=False``,
+    for watch-only views — then only when there's no data at all).
     """
     from src.db.models import CgmReading, FoodLog, WearableActivity, WearableSample
 
     cgm = (db.query(CgmReading)
            .filter(CgmReading.user_id == user.id)
            .order_by(CgmReading.timestamp).all())
-    if not cgm:
+    if not cgm and require_cgm:
         return None
 
-    df = pd.DataFrame([{"timestamp": r.timestamp, "glucose_mg_dl": r.glucose_mgdl} for r in cgm])
+    df = pd.DataFrame([{"timestamp": r.timestamp, "glucose_mg_dl": r.glucose_mgdl} for r in cgm],
+                      columns=["timestamp", "glucose_mg_dl"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df = df.set_index("timestamp").sort_index()
 
@@ -120,6 +122,9 @@ def build_live_frame(db: Session, user) -> Optional[pd.DataFrame]:
             "amount_consumed_pct": 100.0,
         } for f in foods]).set_index("timestamp").sort_index()
         df = df.join(fdf, how="outer")
+
+    if df.empty:            # watch-only path with nothing synced yet
+        return None
 
     # Demographics (broadcast as scalars; carried through the grid via 'first').
     df["age"] = user.age

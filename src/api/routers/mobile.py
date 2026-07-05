@@ -292,3 +292,59 @@ def wearable_recent(limit: int = 5, user: User = Depends(get_current_user),
         "t": r.timestamp.isoformat(), "hr_bpm": r.hr_bpm, "spo2_pct": r.spo2_pct,
         "steps": r.steps, "calories_active": r.calories_active, "distance_m": r.distance_m,
     } for r in rows]
+
+
+# The raw signal columns of the model's 10-min input grid, in display order.
+_MODEL_INPUT_COLS = [
+    "glucose_mg_dl", "hr", "calories_burned", "mets",
+    "calorie", "total_carb", "protein", "total_fat", "dietary_fiber", "sugar",
+    "meal_type_encoded",
+]
+
+
+@router.get("/me/model-inputs")
+def model_inputs(hours: int = 3, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """Transparency view: the per-timestamp raw signals on the model's 10-min grid.
+
+    Exactly what enters the feature pipeline (before lags/rolls/imputation), so the
+    user can see which of their data feeds each forecast step.
+    """
+    import math
+
+    import pandas as pd
+
+    from src.data.step1_loader import LoadedUser
+    from src.data.step2_clinical import build_grid_table
+    from src.serving.live_inference import build_live_frame
+
+    frame = build_live_frame(db, user, require_cgm=False)
+    if frame is None:
+        return {"step_minutes": 10, "columns": [], "rows": []}
+
+    lu = LoadedUser(uid="live", dataset="cgmacros", participant_id="live",
+                    demographics={}, frame=frame, base_dir=None)
+    try:
+        grid = build_grid_table([lu])
+    except Exception as exc:                           # noqa: BLE001 - not enough data to grid
+        log.warning(f"model-inputs grid failed for user={user.id}: {exc}")
+        return {"step_minutes": 10, "columns": [], "rows": []}
+
+    cutoff = datetime.now(timezone.utc) - pd.Timedelta(hours=min(max(hours, 1), 48))
+    idx = grid.index
+    if getattr(idx, "tz", None) is None:
+        cutoff = cutoff.replace(tzinfo=None)
+    grid = grid[idx >= cutoff]
+
+    cols = [c for c in _MODEL_INPUT_COLS if c in grid.columns]
+
+    def _clean(v):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return None if math.isnan(f) else round(f, 2)
+
+    rows = [{"t": ts.isoformat(), **{c: _clean(row[c]) for c in cols}}
+            for ts, row in grid[cols].iterrows()]
+    return {"step_minutes": 10, "columns": cols, "rows": rows}

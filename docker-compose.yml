@@ -102,8 +102,10 @@ services:
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       PYTHONPATH: /app
-      # Override .env's localhost URL — inside Docker, postgres is reachable by service name
-      DATABASE_URL: postgresql://${POSTGRES_USER:-glucosense}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-glucosense}
+      # DATABASE_URL from .env wins (e.g. CockroachDB Cloud); falls back to the
+      # local postgres service. NOTE: a localhost URL is unreachable from inside
+      # the container — use the real external host or leave DATABASE_URL unset.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://glucosense:changeme@postgres:5432/glucosense}
     env_file:
       - .env
     depends_on:
@@ -138,7 +140,8 @@ services:
       - ./data:/app/data:ro
     environment:
       PYTHONPATH: /app
-      DATABASE_URL: postgresql://${POSTGRES_USER:-glucosense}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-glucosense}
+      # Same passthrough as the api service — .env DATABASE_URL (CockroachDB) wins.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://glucosense:changeme@postgres:5432/glucosense}
       BROKER_URL: redis://redis:6379/0
       BACKEND_URL: redis://redis:6379/1
     env_file:
