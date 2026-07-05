@@ -12,6 +12,8 @@
  * plugins/withHealthPermissions.js) — the user can toggle "Allow background
  * access" for GlucoSense inside Health Connect once the new build is installed.
  */
+import { requireOptionalNativeModule } from 'expo-modules-core';
+
 import { getHcStatus, syncHealthConnect } from '@/health/healthConnect';
 
 const TASK = 'glucosense-hc-sync';
@@ -19,6 +21,10 @@ const INTERVAL_S = 15 * 60;   // Android WorkManager minimum
 
 export async function initBackgroundSync(): Promise<boolean> {
   try {
+    // Probe for the native side FIRST — importing expo-task-manager's JS on a
+    // build that doesn't have it throws (and Metro logs a red ERROR toast).
+    if (!requireOptionalNativeModule('ExpoTaskManager')) return false;
+
     const TaskManager = await import('expo-task-manager');
     const BackgroundFetch = await import('expo-background-fetch');
 
