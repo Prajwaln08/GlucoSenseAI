@@ -17,6 +17,10 @@ const READ_PERMISSIONS = [
   'android.permission.health.READ_OXYGEN_SATURATION',
   'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
   'android.permission.health.READ_DISTANCE',
+  // Background sync (expo-background-fetch task): lets the 15-min WorkManager
+  // job read Health Connect while the app is closed (user grants "Allow
+  // background access" in Health Connect → GlucoSense).
+  'android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND',
 ];
 
 module.exports = function withHealthPermissions(config) {

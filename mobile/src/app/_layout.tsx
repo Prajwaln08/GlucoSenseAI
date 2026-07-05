@@ -4,8 +4,13 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { initBackgroundSync } from '@/health/backgroundSync';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { AppThemeProvider, useColors } from '@/lib/theme';
+
+// Register the 15-min background Health Connect sync (no-ops on builds
+// without the task-manager native module — foreground sync still covers app-open).
+initBackgroundSync();
 
 // Cache responses for 30s so navigating between tabs doesn't re-hit the (remote,
 // dev-only) Cockroach DB on every focus — keeps the UI snappy. retry:1 = fail fast.

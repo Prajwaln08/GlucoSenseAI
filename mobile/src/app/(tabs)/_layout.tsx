@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
+import { useAutoSync } from '@/health/useAutoSync';
 import { useColors } from '@/lib/theme';
 
 export default function TabsLayout() {
   const c = useColors();
+  useAutoSync();   // keep watch data near-realtime while the app is open
   return (
     <Tabs
       screenOptions={{

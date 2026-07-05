@@ -62,8 +62,11 @@ function dayKey(iso: string): string {
   return iso.slice(0, 10); // YYYY-MM-DD (Health Connect times are ISO)
 }
 
-/** Read the last `hours` of Health Connect data and sync it to the backend. */
-export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
+/** Read the last `hours` of Health Connect data and sync it to the backend.
+ *  `interactive: false` (auto-sync) never shows permission UI — it silently
+ *  no-ops unless access was already granted via a manual sync. */
+export async function syncHealthConnect(hours = 48, opts: { interactive?: boolean } = {}): Promise<SyncResult> {
+  const interactive = opts.interactive !== false;
   if (Platform.OS !== 'android') {
     return { ok: false, reason: 'platform', message: 'Health Connect is Android-only.' };
   }
@@ -76,7 +79,9 @@ export async function syncHealthConnect(hours = 48): Promise<SyncResult> {
         message: 'Open the Health Connect app and enable it (make sure your watch/fitness app syncs into it), then try again.' };
     }
 
-    await HC.requestPermission(READ.map((rt) => ({ accessType: 'read' as const, recordType: rt })));
+    if (interactive) {
+      await HC.requestPermission(READ.map((rt) => ({ accessType: 'read' as const, recordType: rt })));
+    }
     // requestPermission's return is unreliable (often empty even after granting / when
     // already granted), so check the ACTUAL granted set as the source of truth.
     let grantedPerms: any[] = [];
