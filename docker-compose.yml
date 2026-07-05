@@ -106,6 +106,8 @@ services:
       # local postgres service. NOTE: a localhost URL is unreachable from inside
       # the container — use the real external host or leave DATABASE_URL unset.
       DATABASE_URL: ${DATABASE_URL:-postgresql://glucosense:changeme@postgres:5432/glucosense}
+      # Ollama runs on the HOST Mac — inside the container "localhost" is the container.
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
     env_file:
       - .env
     depends_on:

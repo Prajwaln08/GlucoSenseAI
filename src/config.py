@@ -15,6 +15,11 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 COACH_MODEL       = os.getenv("COACH_MODEL", "claude-sonnet-4-6")
 COACH_MAX_TOKENS  = int(os.getenv("COACH_MAX_TOKENS", "1024"))
 
+# Coach LLM provider: "auto" = Anthropic if a key is set, else local Ollama, else rules.
+LLM_PROVIDER    = os.getenv("LLM_PROVIDER", "auto")            # auto | anthropic | ollama | rules
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+LLM_MODEL       = os.getenv("LLM_MODEL", "qwen2.5:7b-instruct")
+
 # ── Project root ──────────────────────────────────────────────────────────────
 ROOT_DIR = Path(__file__).parent.parent
 DATA_RAW_DIR        = ROOT_DIR / "data" / "raw"
