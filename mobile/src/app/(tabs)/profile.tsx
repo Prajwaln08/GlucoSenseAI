@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, Linking, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,9 +22,9 @@ export default function Profile() {
   const { pref, setPref } = useThemePref();
   const { data: p } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
   const [edit, setEdit] = useState(false);
-  const [hc, setHc] = useState<HcStatus>({ connected: false });
-
-  useEffect(() => { getHcStatus().then(setHc); }, []);
+  // Shared with Home + auto-sync — one cache entry, so both screens always agree.
+  const { data: hc = { connected: false } as HcStatus } =
+    useQuery({ queryKey: ['hc-status'], queryFn: getHcStatus });
 
   const dash = (v: any) => (v === null || v === undefined || v === '' ? '—' : String(v));
   const bp = p?.bp_systolic && p?.bp_diastolic ? `${p.bp_systolic} / ${p.bp_diastolic}` : '—';
@@ -51,7 +51,7 @@ export default function Profile() {
   }
   async function onDisconnectHc() {
     await disconnectHealthConnect();
-    setHc({ connected: false });
+    qc.setQueryData(['hc-status'], { connected: false });
     Alert.alert('Health Connect', 'Disconnected. Reconnect anytime from Home → Sync now.');
   }
 

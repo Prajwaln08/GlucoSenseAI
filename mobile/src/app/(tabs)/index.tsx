@@ -24,7 +24,6 @@ export default function Home() {
   const [horizon, setHorizon] = useState(60);
   const [sheet, setSheet] = useState<null | 'food' | 'vitals'>(null);
   const [syncing, setSyncing] = useState(false);
-  const [hc, setHc] = useState<HcStatus>({ connected: false });
   const [mode, setMode] = useState<Mode>('personalized');
   const [modeHydrated, setModeHydrated] = useState(false);
 
@@ -43,9 +42,11 @@ export default function Home() {
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
   const { data: foods } = useQuery({ queryKey: ['food-recent'], queryFn: () => Api.foodLogs() });
+  // Single source of truth for the Health Connect state — Home, Profile and the
+  // auto-sync hook all read/update this one cache entry, so screens never disagree.
+  const { data: hc = { connected: false } as HcStatus } =
+    useQuery({ queryKey: ['hc-status'], queryFn: getHcStatus });
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
-
-  useEffect(() => { getHcStatus().then(setHc); }, []);
   useEffect(() => { AsyncStorage.getItem(MODE_KEY).then((v) => { if (v === 'basic' || v === 'personalized') setMode(v); setModeHydrated(true); }); }, []);
   const pickMode = useCallback((m: Mode) => { setMode(m); AsyncStorage.setItem(MODE_KEY, m); }, []);
 
@@ -60,7 +61,7 @@ export default function Home() {
     const res = await syncHealthConnect();
     setSyncing(false);
     if (res.ok) {
-      setHc({ connected: true, lastSync: new Date().toISOString() });
+      qc.setQueryData(['hc-status'], { connected: true, lastSync: new Date().toISOString() });
       qc.invalidateQueries({ queryKey: ['recommendations'] });
       qc.invalidateQueries({ queryKey: ['timeseries'] });        // intraday HR feeds the forecast + watch-gate progress
       Alert.alert('Health Connect', `Synced ${res.samples ?? 0} realtime readings + ${res.activity_days ?? 0} day(s) of activity.`);
@@ -279,6 +280,18 @@ function WatchWaitProgress({ c, watch }: any) {
   const have = watch?.have ?? 0;
   const need = watch?.need ?? 8;
   const ready = !!watch?.ready;
+  const left = Math.max(0, need - have);
+
+  // Live countdown: readings arrive ~every 10 min, so ETA = readings left × 10 min.
+  // Re-anchors whenever a sync brings new readings (left changes); ticks every second.
+  const [now, setNow] = useState(Date.now());
+  const etaRef = useRef<number>(0);
+  useEffect(() => { etaRef.current = Date.now() + left * 10 * 60_000; }, [left]);
+  useEffect(() => {
+    if (ready || left === 0) return;
+    const iv = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(iv);
+  }, [ready, left]);
 
   if (ready) {
     return (
@@ -291,23 +304,33 @@ function WatchWaitProgress({ c, watch }: any) {
     );
   }
 
-  const left = Math.max(0, need - have);
+  const remain = Math.max(0, etaRef.current - now);
+  const h = Math.floor(remain / 3_600_000);
+  const m = Math.floor((remain % 3_600_000) / 60_000);
+  const s = Math.floor((remain % 60_000) / 1000);
+  const clock = `${h > 0 ? `${h}:` : ''}${h > 0 ? String(m).padStart(2, '0') : m}:${String(s).padStart(2, '0')}`;
   const pct = Math.min(1, need ? have / need : 0);
-  const mins = left * 10;   // watch writes HR to Health Connect roughly every 10 min
   return (
     <View style={{ marginTop: 4 }}>
-      <Body style={{ fontWeight: '600' }}>
-        {have === 0
-          ? 'Your first prediction is about 80 minutes away'
-          : `Almost there — ${left} reading${left === 1 ? '' : 's'} (~${mins} min) to go`}
-      </Body>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <Body style={{ fontWeight: '600', flex: 1 }}>
+          {remain > 0 ? 'First prediction in about' : 'Any moment now'}
+        </Body>
+        {remain > 0 && (
+          <Body style={{ fontWeight: '700', fontSize: 22, color: c.accent, fontVariant: ['tabular-nums'] }}>
+            {clock}
+          </Body>
+        )}
+      </View>
       <View style={{ height: 8, borderRadius: 4, backgroundColor: c.surfaceAlt, marginTop: 10, overflow: 'hidden' }}>
         <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', backgroundColor: c.accent }} />
       </View>
       <Muted style={{ marginTop: 10 }}>
-        {have === 0
-          ? 'Wear your watch and tap “Sync now” — predictions unlock after 8 heart-rate readings.'
-          : `${have} of ${need} readings in — keep the watch on and sync again soon.`}
+        {remain > 0
+          ? `${have} of ${need} readings in — the clock updates as readings arrive.`
+          : have === 0
+            ? 'Wear your watch and tap “Sync now” — predictions unlock after 8 heart-rate readings.'
+            : `${have} of ${need} readings in — waiting for your next sync to finish the set.`}
       </Muted>
     </View>
   );

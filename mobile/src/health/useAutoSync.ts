@@ -36,6 +36,7 @@ export function useAutoSync() {
         const res = await syncHealthConnect(AUTO_SYNC_HOURS, { interactive: false });
         if (res.ok) {
           lastRun.current = Date.now();
+          qc.setQueryData(['hc-status'], { connected: true, lastSync: new Date().toISOString() });
           qc.invalidateQueries({ queryKey: ['timeseries'] });      // fresh HR → watch gate / forecast
           qc.invalidateQueries({ queryKey: ['recommendations'] });
         }
