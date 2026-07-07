@@ -66,6 +66,9 @@ def build_live_frame(db: Session, user, *, require_cgm: bool = True) -> Optional
     df = pd.DataFrame([{"timestamp": r.timestamp, "glucose_mg_dl": r.glucose_mgdl} for r in cgm],
                       columns=["timestamp", "glucose_mg_dl"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    # Keep numeric dtype even when there are no CGM rows — an all-None object column
+    # breaks the pipeline's range comparisons ('<' between NoneType).
+    df["glucose_mg_dl"] = pd.to_numeric(df["glucose_mg_dl"], errors="coerce")
     df = df.set_index("timestamp").sort_index()
 
     # Watch signals — PREFER intraday samples (real hr_roll_* features); fall back to the
@@ -127,9 +130,11 @@ def build_live_frame(db: Session, user, *, require_cgm: bool = True) -> Optional
         return None
 
     # Demographics (broadcast as scalars; carried through the grid via 'first').
-    df["age"] = user.age
-    df["bmi"] = user.bmi
-    df["hba1c"] = user.hba1c
+    # np.nan (not None) keeps the columns float64 — None makes them object dtype,
+    # which breaks numeric comparisons downstream (e.g. hba1c bucketing).
+    df["age"] = float(user.age) if user.age is not None else np.nan
+    df["bmi"] = float(user.bmi) if user.bmi is not None else np.nan
+    df["hba1c"] = float(user.hba1c) if user.hba1c is not None else np.nan
     df["gender"] = user.gender
     return df
 
@@ -244,6 +249,20 @@ def timeseries_for_user(db: Session, user, hours: int = 6) -> dict:
             "predicted": [], "phase": phase, "training": _training_status(db, user.id)}
 
     if phase == lc.NO_SOURCE:
+        # Watch-only user (never connected a CGM) → Virtual CGM: population base model
+        # (watch+food, no glucose). Same watch gate as every other forecast; status stays
+        # "no_source" so the Personalized view still prompts for a CGM — the Basic view
+        # renders from `predicted` + `watch`.
+        wr = lc.watch_readiness(db, user.id)
+        base = {**base, "watch": wr}
+        if wr["ready"]:
+            try:
+                out = _forecast_base(db, user)
+                if out.get("status") == "ready":
+                    base = {**base, "predicted": out["predicted"], "model": out.get("model"),
+                            "now": out.get("now") or base["now"]}
+            except Exception as exc:                    # noqa: BLE001
+                log.warning(f"virtual-cgm base forecast failed for user={user.id}: {exc}")
         return {**base, "status": "no_source"}
     if not raw:
         return {**base, "status": "no_data"}
@@ -331,9 +350,10 @@ def _forecast(db: Session, user, model_phase: str) -> dict:
 
 
 def _forecast_base(db: Session, user) -> dict:
-    """Population base model (without_cgm@hc, watch+food) — post-CGM fallback when the user has
-    no personal model but watch is flowing. Predicts ABSOLUTE glucose from recent watch+food."""
-    frame = build_live_frame(db, user)
+    """Population base model (without_cgm@hc, watch+food) — served post-CGM and for
+    watch-only (never-CGM) Virtual CGM users. Predicts ABSOLUTE glucose from watch+food,
+    so no CGM history is required to build the frame."""
+    frame = build_live_frame(db, user, require_cgm=False)
     if frame is None:
         return {"status": "no_data"}
     feat_df = featurize(frame, mode="post_cgm").sort_index()
@@ -351,7 +371,9 @@ def _forecast_base(db: Session, user) -> dict:
     predicted = []
     for h in horizons:
         model, mfeat, scaler, imputer = _load_personal_bundle(BASE_TIER, BASE_SCOPE, h, reg)
-        X = last.reindex(columns=mfeat)
+        # Sparse live frames (watch-only users) can leave all-None object columns;
+        # the models were trained on numeric-only features, so coerce to match.
+        X = last.reindex(columns=mfeat).apply(pd.to_numeric, errors="coerce")
         if imputer is not None:
             X = pd.DataFrame(imputer.transform(X), columns=mfeat, index=X.index)
         if scaler is not None:

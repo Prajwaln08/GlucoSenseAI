@@ -259,19 +259,44 @@ export default function Home() {
           cta="Connect your watch" onPress={() => flashConnector('hc')} />
       );
     }
+    const vPred = (ts?.predicted ?? []).filter((p) => p.horizon_min != null);
+    const virtualReady = !!ts?.watch?.ready && vPred.length > 0;
     return (
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <Ionicons name="watch-outline" size={18} color={c.accent} />
           <Body style={{ fontWeight: '600' }}>Watch connected</Body>
         </View>
-        <WatchWaitProgress c={c} watch={ts?.watch} />
+        {virtualReady
+          ? <VirtualEstimate c={c} pred={vPred} />
+          : <WatchWaitProgress c={c} watch={ts?.watch} />}
         <Muted style={{ marginTop: 10 }}>
           Virtual CGM estimates your glucose from your watch data using our standard base model. For forecasts tuned to your body, switch to Personalized.
         </Muted>
       </Card>
     );
   }
+}
+
+function VirtualEstimate({ c, pred }: any) {
+  const first = pred[0];
+  return (
+    <View style={{ marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+        <Body style={{ fontSize: 36, fontWeight: '700' }}>~{Math.round(first.mgdl)}</Body>
+        <Body style={{ color: c.textMuted, marginBottom: 7 }}>mg/dL est. in {first.horizon_min} min</Body>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+        {pred.slice(1).map((p: any) => (
+          <View key={p.horizon_min} style={{ backgroundColor: c.surfaceAlt, borderRadius: 10,
+            paddingHorizontal: 12, paddingVertical: 7, alignItems: 'center' }}>
+            <Muted style={{ fontSize: 11 }}>+{p.horizon_min}m</Muted>
+            <Body style={{ fontWeight: '600' }}>~{Math.round(p.mgdl)}</Body>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 function WatchWaitProgress({ c, watch }: any) {
@@ -282,16 +307,18 @@ function WatchWaitProgress({ c, watch }: any) {
   const ready = !!watch?.ready;
   const left = Math.max(0, need - have);
 
-  // Live countdown: readings arrive ~every 10 min, so ETA = readings left × 10 min.
-  // Re-anchors whenever a sync brings new readings (left changes); ticks every second.
-  const [now, setNow] = useState(Date.now());
-  const etaRef = useRef<number>(0);
-  useEffect(() => { etaRef.current = Date.now() + left * 10 * 60_000; }, [left]);
+  // Live countdown anchored to SERVER truth: the newest HR reading arrived at
+  // watch.last_at, readings come ~every 10 min, so the gate opens around
+  // last_at + left×10min. Being derived (not stored client-side), the ETA is
+  // identical across refetches, reloads and remounts — it can't "restart".
+  const lastAt = watch?.last_at ? Date.parse(watch.last_at) : null;
+  const eta = lastAt != null && left > 0 ? lastAt + left * 10 * 60_000 : null;
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (ready || left === 0) return;
+    if (ready) return;
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
-  }, [ready, left]);
+  }, [ready]);
 
   if (ready) {
     return (
@@ -304,7 +331,7 @@ function WatchWaitProgress({ c, watch }: any) {
     );
   }
 
-  const remain = Math.max(0, etaRef.current - now);
+  const remain = eta != null ? Math.max(0, eta - now) : 0;
   const h = Math.floor(remain / 3_600_000);
   const m = Math.floor((remain % 3_600_000) / 60_000);
   const s = Math.floor((remain % 60_000) / 1000);
@@ -314,7 +341,9 @@ function WatchWaitProgress({ c, watch }: any) {
     <View style={{ marginTop: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
         <Body style={{ fontWeight: '600', flex: 1 }}>
-          {remain > 0 ? 'First prediction in about' : 'Any moment now'}
+          {remain > 0 ? 'First prediction in about'
+            : eta == null ? 'Waiting for your first heart-rate reading'
+            : 'Any moment now'}
         </Body>
         {remain > 0 && (
           <Body style={{ fontWeight: '700', fontSize: 22, color: c.accent, fontVariant: ['tabular-nums'] }}>
@@ -328,7 +357,7 @@ function WatchWaitProgress({ c, watch }: any) {
       <Muted style={{ marginTop: 10 }}>
         {remain > 0
           ? `${have} of ${need} readings in — the clock updates as readings arrive.`
-          : have === 0
+          : eta == null
             ? 'Wear your watch and tap “Sync now” — predictions unlock after 8 heart-rate readings.'
             : `${have} of ${need} readings in — waiting for your next sync to finish the set.`}
       </Muted>
