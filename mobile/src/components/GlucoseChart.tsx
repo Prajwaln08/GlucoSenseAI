@@ -42,11 +42,14 @@ export function GlucoseChart({ raw, predicted, now, range, foodMarkers, highligh
   const scrollRef = useRef<ScrollView>(null);
 
   const all = [...raw, ...predicted];
-  const tMin = all[0]?.t ?? now;
-  const tMax = all[all.length - 1]?.t ?? now + HOUR_MS;
-
   // glucose value at an arbitrary time (linear-interpolated) → place food icons on the line
   const sorted = all.filter((p) => Number.isFinite(p.t)).sort((a, b) => a.t - b.t);
+
+  // Time domain: always cover the recent past through the forecast, even when the
+  // data itself is sparse (Virtual CGM has only 4 prediction points) — keeps the
+  // chart scrollable and keeps earlier food markers inside the window.
+  const tMin = Math.min(sorted[0]?.t ?? now, now - 3 * HOUR_MS);
+  const tMax = Math.max(sorted[sorted.length - 1]?.t ?? now, now + HOUR_MS);
   const glucoseAt = (t: number) => {
     if (!sorted.length) return Y_MIN;
     if (t <= sorted[0].t) return sorted[0].mgdl;
@@ -68,8 +71,21 @@ export function GlucoseChart({ raw, predicted, now, range, foodMarkers, highligh
 
   const sx = (t: number) => LEFT + ((t - tMin) / Math.max(1, tMax - tMin)) * innerW;
   const sy = (g: number) => TOP + (1 - (clamp(g, Y_MIN, Y_MAX) - Y_MIN) / (Y_MAX - Y_MIN)) * innerH;
-  const line = (pts: GlucosePoint[]) =>
-    pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.t).toFixed(1)},${sy(p.mgdl).toFixed(1)}`).join(' ');
+  // Smooth path: Catmull-Rom through the points rendered as cubic Béziers —
+  // curves flow through every reading instead of zig-zagging between them.
+  const line = (pts: GlucosePoint[]) => {
+    const p = pts.filter((pt) => Number.isFinite(pt.t)).map((pt) => [sx(pt.t), sy(pt.mgdl)]);
+    if (!p.length) return '';
+    if (p.length < 3) return p.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    let d = `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}`;
+    for (let i = 0; i < p.length - 1; i++) {
+      const p0 = p[Math.max(0, i - 1)], p1 = p[i], p2 = p[i + 1], p3 = p[Math.min(p.length - 1, i + 2)];
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+    }
+    return d;
+  };
 
   const hourTicks: number[] = [];
   for (let t = Math.ceil(tMin / HOUR_MS) * HOUR_MS; t <= tMax; t += HOUR_MS) hourTicks.push(t);

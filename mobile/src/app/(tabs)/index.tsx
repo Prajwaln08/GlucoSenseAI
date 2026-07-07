@@ -261,18 +261,34 @@ export default function Home() {
     }
     const vPred = (ts?.predicted ?? []).filter((p) => p.horizon_min != null);
     const virtualReady = !!ts?.watch?.ready && vPred.length > 0;
+    const vSel = vPred.find((p) => p.horizon_min === horizon) ?? vPred[0];
     return (
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <Ionicons name="watch-outline" size={18} color={c.accent} />
           <Body style={{ fontWeight: '600' }}>Watch connected</Body>
         </View>
-        {virtualReady ? (
+        {virtualReady && vSel ? (
           <>
-            <VirtualEstimate c={c} pred={vPred} />
-            <View style={{ marginTop: 12 }}>
-              <GlucoseChart raw={[]} predicted={predicted} now={now} range={range}
-                foodMarkers={foodMarkers} width={width} />
+            {/* Same visual language as Personalized: big value, range pill, chart, chips */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 8 }}>
+              <Body style={{ fontSize: 40, fontWeight: '700' }}>~{Math.round(vSel.mgdl)}</Body>
+              <Body style={{ color: c.textMuted, marginBottom: 8 }}>mg/dL est. in {vSel.horizon_min} min</Body>
+              <View style={{ flex: 1 }} />
+              <Pill label={label(vSel.mgdl)} tone={tone(vSel.mgdl)} />
+            </View>
+            <GlucoseChart raw={[]} predicted={predicted} now={now} range={range}
+              foodMarkers={foodMarkers}
+              highlight={{ t: Date.parse(vSel.t), mgdl: vSel.mgdl }} width={width} />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center' }}>
+              <Muted>View</Muted>
+              {HORIZONS.map((h) => (
+                <Pressable key={h} onPress={() => setHorizon(h)}
+                  style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+                    backgroundColor: horizon === h ? c.accent : c.surfaceAlt }}>
+                  <Body style={{ color: horizon === h ? c.onAccent : c.text, fontSize: 13 }}>+{h}m</Body>
+                </Pressable>
+              ))}
             </View>
           </>
         ) : (
@@ -284,27 +300,6 @@ export default function Home() {
       </Card>
     );
   }
-}
-
-function VirtualEstimate({ c, pred }: any) {
-  const first = pred[0];
-  return (
-    <View style={{ marginTop: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-        <Body style={{ fontSize: 36, fontWeight: '700' }}>~{Math.round(first.mgdl)}</Body>
-        <Body style={{ color: c.textMuted, marginBottom: 7 }}>mg/dL est. in {first.horizon_min} min</Body>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-        {pred.slice(1).map((p: any) => (
-          <View key={p.horizon_min} style={{ backgroundColor: c.surfaceAlt, borderRadius: 10,
-            paddingHorizontal: 12, paddingVertical: 7, alignItems: 'center' }}>
-            <Muted style={{ fontSize: 11 }}>+{p.horizon_min}m</Muted>
-            <Body style={{ fontWeight: '600' }}>~{Math.round(p.mgdl)}</Body>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
 }
 
 function WatchWaitProgress({ c, watch }: any) {
