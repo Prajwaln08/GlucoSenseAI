@@ -41,7 +41,22 @@ LOG_VITALS = {
     },
 }
 
-TOOLS = [LOG_FOOD, LOG_VITALS]
+LIST_LOGS = {
+    "name": "list_logs",
+    "description": "Fetch the user's recent logged history — meals/food and vitals (BP, weight, "
+                   "finger-stick glucose, HbA1c). Use whenever the user asks what they logged, "
+                   "ate, or how a reading has changed. Read-only.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["food", "vitals", "all"]},
+            "days": {"type": "integer", "description": "How many days back to fetch (default 7, max 30)"},
+        },
+        "required": ["kind"],
+    },
+}
+
+TOOLS = [LOG_FOOD, LOG_VITALS, LIST_LOGS]
 
 
 def execute_tool(db: Session, user: User, name: str, inp: dict) -> tuple[str, dict]:
@@ -76,5 +91,28 @@ def execute_tool(db: Session, user: User, name: str, inp: dict) -> tuple[str, di
             summary = f"Logged {kind}: {inp.get('value')}."
         return summary, {"type": "vital", "kind": kind, "value": inp.get("value"),
                          "bp_systolic": inp.get("bp_systolic"), "bp_diastolic": inp.get("bp_diastolic")}
+
+    if name == "list_logs":
+        from datetime import datetime, timedelta, timezone
+        kind = str(inp.get("kind", "all")).lower()
+        days = min(max(int(inp.get("days") or 7), 1), 30)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        lines: list[str] = []
+        if kind in ("food", "all"):
+            foods = [f for f in crud.get_food_logs(db, user.id, limit=30)
+                     if f.logged_at and f.logged_at.replace(tzinfo=timezone.utc) >= cutoff]
+            lines.append(f"FOOD (last {days}d): " + ("; ".join(
+                f"{f.logged_at:%a %d %b %H:%M} {f.meal_type}: {f.description or '?'}"
+                + (f" ({f.carbs_g:g}g carbs)" if f.carbs_g else "")
+                for f in foods) or "nothing logged"))
+        if kind in ("vitals", "all"):
+            vits = (db.query(Vitals).filter(Vitals.user_id_fk == user.id,
+                                            Vitals.recorded_at >= cutoff)
+                    .order_by(Vitals.recorded_at.desc()).limit(30).all())
+            lines.append(f"VITALS (last {days}d): " + ("; ".join(
+                f"{v.recorded_at:%a %d %b %H:%M} " +
+                (f"BP {v.bp_systolic}/{v.bp_diastolic}" if v.kind == "bp" else f"{v.kind} {v.value:g}")
+                for v in vits) or "nothing logged"))
+        return "\n".join(lines), {"type": "logs", "kind": kind, "days": days}
 
     return f"Unknown tool {name}.", {"type": "error"}

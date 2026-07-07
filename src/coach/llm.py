@@ -53,13 +53,32 @@ Safety (non-negotiable):
 - For anything that sounds like an emergency, tell them to seek medical help now.
 - Do NOT append a medical disclaimer to every reply (the app's terms cover that).
 
-Logging:
-- When the user mentions eating something, call log_food. When they report a blood
-  pressure, weight, finger-stick glucose, or HbA1c, call log_vitals. Then confirm briefly.
+Logging & fetching:
+- When the user mentions eating something, call log_food IMMEDIATELY with whatever they
+  told you — never ask clarifying questions first. Estimate carbs_g yourself from the food
+  described if they didn't give it. When they report a blood pressure, weight, finger-stick
+  glucose, or HbA1c, call log_vitals the same way. Then confirm briefly.
+- Log each item EXACTLY ONCE — never repeat a tool call for the same meal or reading.
+  Once a tool result comes back, reply to the user instead of calling the tool again.
+- When they ask what they've logged or eaten (today, this week…), call list_logs and
+  answer from its result.
 
 Style: warm, personal, practical, plain language, 2–4 short sentences. No markdown headers."""
 
 _TOOL_LOOP_CAP = 4
+
+
+def _execute_once(db, user, name: str, args: dict, executed: set, actions: list) -> str:
+    """Run a tool call at most once per chat turn — small models love to re-call
+    log_food after every tool result, which triple-logged meals."""
+    key = (name, json.dumps(args, sort_keys=True, default=str))
+    if key in executed:
+        return ("Already done — this exact call was executed. Do NOT call it again; "
+                "reply to the user now.")
+    executed.add(key)
+    summary, action = execute_tool(db, user, name, dict(args))
+    actions.append(action)
+    return summary
 
 
 def _system(ctx: dict) -> str:
@@ -100,6 +119,7 @@ def _anthropic_chat(db: Session, user: User, ctx: dict, history: list[dict],
 
     messages = [*history, {"role": "user", "content": message}]
     actions: list[dict] = []
+    executed: set = set()
     for _ in range(_TOOL_LOOP_CAP):
         resp = client.messages.create(
             model=config.COACH_MODEL, max_tokens=config.COACH_MAX_TOKENS,
@@ -110,8 +130,7 @@ def _anthropic_chat(db: Session, user: User, ctx: dict, history: list[dict],
             results = []
             for block in resp.content:
                 if getattr(block, "type", None) == "tool_use":
-                    summary, action = execute_tool(db, user, block.name, dict(block.input))
-                    actions.append(action)
+                    summary = _execute_once(db, user, block.name, dict(block.input), executed, actions)
                     results.append({"type": "tool_result", "tool_use_id": block.id, "content": summary})
             messages.append({"role": "user", "content": results})
             continue
@@ -137,6 +156,7 @@ def _ollama_chat(db: Session, user: User, ctx: dict, history: list[dict],
     messages = [{"role": "system", "content": _system(ctx)},
                 *history, {"role": "user", "content": message}]
     actions: list[dict] = []
+    executed: set = set()
     with httpx.Client(base_url=config.OLLAMA_BASE_URL, timeout=120.0) as client:
         for _ in range(_TOOL_LOOP_CAP):
             r = client.post("/api/chat", json={
@@ -162,13 +182,87 @@ def _ollama_chat(db: Session, user: User, ctx: dict, history: list[dict],
                             args = json.loads(args)
                         except ValueError:
                             args = {}
-                    summary, action = execute_tool(db, user, fn.get("name", ""), dict(args))
-                    actions.append(action)
+                    summary = _execute_once(db, user, fn.get("name", ""), dict(args), executed, actions)
                     messages.append({"role": "tool", "content": summary})
                 continue
             text = (msg.get("content") or "").strip()
             return text or "Could you say a bit more about what you'd like help with?", actions
     return "Let's keep going — what would you like to do next?", actions
+
+
+# ── Streaming (SSE) ───────────────────────────────────────────────────────────
+
+def chat_stream(db: Session, user: User, ctx: dict, history: list[dict], message: str):
+    """Generator of events: {"delta": str} per chunk, then {"done": True, "reply", "actions"}.
+
+    Token-streams on the Ollama path (tool rounds run silently between streamed
+    text). Other providers degrade to a single chunk so the endpoint works
+    everywhere.
+    """
+    provider = _provider()
+    if provider != "ollama":
+        reply, actions = chat(db, user, ctx, history, message)
+        yield {"delta": reply}
+        yield {"done": True, "reply": reply, "actions": actions}
+        return
+
+    import httpx
+
+    messages = [{"role": "system", "content": _system(ctx)},
+                *history, {"role": "user", "content": message}]
+    actions: list[dict] = []
+    executed: set = set()
+    full = ""
+    try:
+        with httpx.Client(base_url=config.OLLAMA_BASE_URL, timeout=120.0) as client:
+            for _ in range(_TOOL_LOOP_CAP):
+                tool_calls: list[dict] = []
+                round_text = ""
+                with client.stream("POST", "/api/chat", json={
+                    "model": config.LLM_MODEL,
+                    "messages": messages,
+                    "tools": _ollama_tools(),
+                    "stream": True,
+                    "keep_alive": "30m",
+                    "options": {"num_predict": 420, "num_ctx": 8192, "temperature": 0.4},
+                }) as r:
+                    r.raise_for_status()
+                    for line in r.iter_lines():
+                        if not line:
+                            continue
+                        chunk = json.loads(line)
+                        msg = chunk.get("message") or {}
+                        if msg.get("tool_calls"):
+                            tool_calls.extend(msg["tool_calls"])
+                        delta = msg.get("content") or ""
+                        if delta:
+                            round_text += delta
+                            yield {"delta": delta}
+                        if chunk.get("done"):
+                            break
+                full += round_text
+                if tool_calls:
+                    messages.append({"role": "assistant", "content": round_text,
+                                     "tool_calls": tool_calls})
+                    for tc in tool_calls:
+                        fn = (tc.get("function") or {})
+                        args = fn.get("arguments") or {}
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except ValueError:
+                                args = {}
+                        summary = _execute_once(db, user, fn.get("name", ""), dict(args), executed, actions)
+                        messages.append({"role": "tool", "content": summary})
+                    continue                              # next round streams the final answer
+                break
+    except Exception as exc:                               # noqa: BLE001
+        log.warning(f"coach chat stream failed: {exc}")
+        if not full:
+            full = _fallback(ctx, message)
+            yield {"delta": full}
+    reply = full.strip() or "Could you say a bit more about what you'd like help with?"
+    yield {"done": True, "reply": reply, "actions": actions}
 
 
 # ── Rule-based fallback ───────────────────────────────────────────────────────

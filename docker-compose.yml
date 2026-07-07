@@ -99,6 +99,8 @@ services:
     volumes:
       - ./models:/app/models:ro   # read-only — API never writes models
       - ./uploads:/app/uploads    # chat attachments — writable
+      # CockroachDB Cloud CA cert — libpq's default lookup path for sslmode=verify-full
+      - ~/.postgresql:/root/.postgresql:ro
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       PYTHONPATH: /app
@@ -137,9 +139,12 @@ services:
         --loglevel=info
         -Q glucosense
         --concurrency=1
+        -B
     volumes:
       - ./models:/app/models
       - ./data:/app/data:ro
+      # CockroachDB Cloud CA cert (same as api service)
+      - ~/.postgresql:/root/.postgresql:ro
     environment:
       PYTHONPATH: /app
       # Same passthrough as the api service — .env DATABASE_URL (CockroachDB) wins.
@@ -153,6 +158,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # The API image's healthcheck curls :8000, which a Celery worker never serves —
+    # ping the worker over the broker instead.
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A src.tasks.celery_app inspect ping --timeout 10 | grep -q pong || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     profiles:
       - worker
     restart: unless-stopped

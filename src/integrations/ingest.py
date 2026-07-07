@@ -27,6 +27,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _ts_key(ts: datetime) -> datetime:
+    """Normalise a timestamp for dedup-dict keys: naive-UTC. Postgres returns
+    tz-aware rows while SQLite returns naive — without this, comparing incoming
+    (aware) stamps against stored ones would silently never match."""
+    return ts if ts.tzinfo is None else ts.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def ingest_cgm_readings(
     db: Session,
     readings: list[CgmReadingIngest],
@@ -42,14 +49,25 @@ def ingest_cgm_readings(
     """
     saved = 0
     inserted_by_user: dict[str, list] = {}
+
+    # ONE existence query per user covering the batch window — per-reading SELECTs
+    # are fatal against a remote DB (a backfill = thousands of round-trips).
+    seen: set[tuple[str, datetime]] = set()
+    by_user: dict[str, list] = {}
     for r in readings:
-        exists = (
-            db.query(CgmReading.id)
-            .filter(CgmReading.user_id == r.user_id, CgmReading.timestamp == r.timestamp)
-            .first()
-        )
-        if exists:
+        by_user.setdefault(r.user_id, []).append(r.timestamp)
+    for uid, tss in by_user.items():
+        existing = (db.query(CgmReading.timestamp)
+                    .filter(CgmReading.user_id == uid,
+                            CgmReading.timestamp >= min(tss),
+                            CgmReading.timestamp <= max(tss)).all())
+        seen.update((uid, _ts_key(t[0])) for t in existing)
+
+    for r in readings:
+        key = (r.user_id, _ts_key(r.timestamp))
+        if key in seen:
             continue
+        seen.add(key)                    # dedup within the batch too (first writer wins)
         db.add(CgmReading(
             id=str(uuid.uuid4()),
             user_id=r.user_id,
@@ -96,18 +114,27 @@ def ingest_wearable_samples(
     same instant; re-syncing the same window is idempotent.
     """
     from src.db.models import WearableSample
+    rows = [r for r in rows if r.get("timestamp") is not None]
+    if not rows:
+        if commit:
+            db.commit()
+        return 0
+
+    # ONE round-trip fetches every existing row in the batch window — per-sample
+    # SELECTs made a 48h sync take minutes against a remote DB (client timed out).
+    tss = [r["timestamp"] for r in rows]
+    existing_rows = (db.query(WearableSample)
+                     .filter(WearableSample.user_id_fk == user_id,
+                             WearableSample.timestamp >= min(tss),
+                             WearableSample.timestamp <= max(tss)).all())
+    by_ts = {_ts_key(e.timestamp): e for e in existing_rows}
+
     new = 0
     for r in rows:
-        ts = r.get("timestamp")
-        if ts is None:
-            continue
-        existing = (
-            db.query(WearableSample)
-            .filter(WearableSample.user_id_fk == user_id, WearableSample.timestamp == ts)
-            .first()
-        )
+        key = _ts_key(r["timestamp"])
+        existing = by_ts.get(key)
         target = existing or WearableSample(
-            id=str(uuid.uuid4()), user_id_fk=user_id, timestamp=ts,
+            id=str(uuid.uuid4()), user_id_fk=user_id, timestamp=r["timestamp"],
             provider=r.get("provider", "health_connect"), created_at=_now(),
         )
         for field in ("hr_bpm", "spo2_pct", "steps", "calories_active", "distance_m"):
@@ -116,6 +143,7 @@ def ingest_wearable_samples(
                 setattr(target, field, val)
         if existing is None:
             db.add(target)
+            by_ts[key] = target          # merge duplicate instants within the batch
             new += 1
     if commit:
         db.commit()

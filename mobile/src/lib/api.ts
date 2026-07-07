@@ -129,7 +129,8 @@ export const Api = {
     activity: { date: string; steps?: number; calories_active?: number; distance_m?: number; hr_avg_bpm?: number; spo2_avg?: number; sleep_hours?: number }[];
     samples?: WearableSample[];
   }): Promise<{ activity_days: number; samples_inserted?: number }> {
-    const { data } = await api.post('/health-connect/sync', payload);
+    // First-ever sync can carry a large window into a remote DB — allow it time.
+    const { data } = await api.post('/health-connect/sync', payload, { timeout: 90_000 });
     return data;
   },
   async wearableRecent(limit = 5): Promise<WearableSample[]> {
@@ -146,6 +147,48 @@ export const Api = {
   async coachChat(message: string): Promise<{ reply: string; actions: any[] }> {
     const { data } = await api.post('/coach/chat', { message });
     return data;
+  },
+  /** Streaming chat: `onDelta` receives the reply-so-far as tokens arrive.
+   *  Uses XHR (RN fetch can't stream) and parses SSE lines from a buffer so
+   *  events split across network chunks are handled correctly. */
+  coachChatStream(message: string, onDelta: (textSoFar: string) => void):
+      Promise<{ reply: string; actions: any[] }> {
+    return new Promise(async (resolve, reject) => {
+      const token = await getToken();
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}/coach/chat/stream`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.timeout = 180_000;
+      let seen = 0; let buf = ''; let full = ''; let actions: any[] = []; let gotDone = false;
+      const pump = () => {
+        buf += xhr.responseText.slice(seen);
+        seen = xhr.responseText.length;
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';                    // keep the trailing partial line
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.delta) { full += ev.delta; onDelta(full); }
+            if (ev.done) { gotDone = true; if (ev.reply) full = ev.reply; actions = ev.actions ?? []; }
+          } catch { /* partial JSON — wait for more bytes */ }
+        }
+      };
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState >= 3) pump();
+        if (xhr.readyState === 4) {
+          pump();
+          if (xhr.status === 200 && gotDone) resolve({ reply: full, actions });
+          else if (xhr.status === 200 && full) resolve({ reply: full, actions });
+          else reject(new Error(`stream failed (HTTP ${xhr.status})`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('network error'));
+      xhr.ontimeout = () => reject(new Error('stream timeout'));
+      xhr.send(JSON.stringify({ message }));
+    });
   },
   async coachMessages(): Promise<ChatTurn[]> {
     const { data } = await api.get('/coach/messages');

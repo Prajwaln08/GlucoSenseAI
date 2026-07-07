@@ -30,6 +30,19 @@ def chat(db: Session, user: User, message: str) -> dict:
     return {"reply": reply, "actions": actions}
 
 
+def chat_stream(db: Session, user: User, message: str):
+    """Streaming variant of chat(): yields llm.chat_stream events and persists the
+    conversation once the final event arrives (same rows as the one-shot path)."""
+    prior = history(db, user)
+    ctx = build_context(db, user)
+    for ev in llm.chat_stream(db, user, ctx, prior, message):
+        if ev.get("done"):
+            db.add(ChatMessage(user_id_fk=user.id, role="user", content=message))
+            db.add(ChatMessage(user_id_fk=user.id, role="assistant", content=ev.get("reply", "")))
+            db.commit()
+        yield ev
+
+
 def generate_recommendations(db: Session, user: User) -> list[dict]:
     ctx = build_context(db, user)
     recs = rules.recommendations(ctx)

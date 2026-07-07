@@ -43,14 +43,34 @@ export default function Chat() {
     setText('');
     setMessages((m) => [...m, { id: `u${Date.now()}`, role: 'user', content: t }]);
     setSending(true);
+    const aId = `a${Date.now()}`;   // placeholder bubble, filled in as tokens stream
     try {
-      const { reply } = await Api.coachChat(t);
-      setMessages((m) => [...m, { id: `a${Date.now()}`, role: 'assistant', content: reply }]);
+      let started = false;
+      const { reply } = await Api.coachChatStream(t, (textSoFar) => {
+        if (!started) {
+          started = true;
+          setMessages((m) => [...m, { id: aId, role: 'assistant', content: textSoFar }]);
+        } else {
+          setMessages((m) => m.map((msg) => (msg.id === aId ? { ...msg, content: textSoFar } : msg)));
+        }
+      });
+      // final text may differ slightly from the last delta (trim etc.)
+      setMessages((m) => (started
+        ? m.map((msg) => (msg.id === aId ? { ...msg, content: reply } : msg))
+        : [...m, { id: aId, role: 'assistant', content: reply }]));
       // logging via chat can change food/glucose → refresh the dashboard
       qc.invalidateQueries({ queryKey: ['timeseries'] });
       qc.invalidateQueries({ queryKey: ['recommendations'] });
     } catch {
-      setMessages((m) => [...m, { id: `e${Date.now()}`, role: 'assistant', content: 'Sorry — I could not reach the coach just now.' }]);
+      // streaming unavailable (older server?) → fall back to the one-shot endpoint
+      try {
+        const { reply } = await Api.coachChat(t);
+        setMessages((m) => [...m, { id: aId, role: 'assistant', content: reply }]);
+        qc.invalidateQueries({ queryKey: ['timeseries'] });
+        qc.invalidateQueries({ queryKey: ['recommendations'] });
+      } catch {
+        setMessages((m) => [...m, { id: `e${Date.now()}`, role: 'assistant', content: 'Sorry — I could not reach Doctor Gluco just now.' }]);
+      }
     } finally {
       setSending(false);
     }
