@@ -267,9 +267,17 @@ export default function Home() {
           <Ionicons name="watch-outline" size={18} color={c.accent} />
           <Body style={{ fontWeight: '600' }}>Watch connected</Body>
         </View>
-        {virtualReady
-          ? <VirtualEstimate c={c} pred={vPred} />
-          : <WatchWaitProgress c={c} watch={ts?.watch} />}
+        {virtualReady ? (
+          <>
+            <VirtualEstimate c={c} pred={vPred} />
+            <View style={{ marginTop: 12 }}>
+              <GlucoseChart raw={[]} predicted={predicted} now={now} range={range}
+                foodMarkers={foodMarkers} width={width} />
+            </View>
+          </>
+        ) : (
+          <WatchWaitProgress c={c} watch={ts?.watch} />
+        )}
         <Muted style={{ marginTop: 10 }}>
           Virtual CGM estimates your glucose from your watch data using our standard base model. For forecasts tuned to your body, switch to Personalized.
         </Muted>
