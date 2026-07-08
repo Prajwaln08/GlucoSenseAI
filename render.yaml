@@ -22,6 +22,8 @@ services:
     dockerfilePath: docker/Dockerfile.serve
     dockerContext: .
     plan: free
+    # Co-located with CockroachDB (gcp-us-east1): API↔DB chatter dominates latency.
+    region: virginia
     healthCheckPath: /health
     # Render injects $PORT; override the image's fixed :8000 bind.
     dockerCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
