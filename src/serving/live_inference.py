@@ -15,6 +15,7 @@ Serving policy (see docs/personalization_lifecycle_plan.md):
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -239,8 +240,11 @@ def timeseries_for_user(db: Session, user, hours: int = 6) -> dict:
     phase = lc.resolve_phase(db, user, _has)
 
     # Recent actual CGM for the chart (native resolution, real timestamps — no shift).
+    # Future-dated readings are excluded: sandbox/demo providers emit day-spanning
+    # curves whose tail is ahead of wall-clock, which bends the chart's time axis.
+    horizon_cap = datetime.now(timezone.utc) + timedelta(minutes=5)
     recent = (db.query(CgmReading)
-              .filter(CgmReading.user_id == user.id)
+              .filter(CgmReading.user_id == user.id, CgmReading.timestamp <= horizon_cap)
               .order_by(CgmReading.timestamp.desc()).limit(hours * 12).all())
     recent = sorted(recent, key=lambda r: r.timestamp)
     raw = [{"t": r.timestamp.isoformat(), "mgdl": round(float(r.glucose_mgdl), 1)} for r in recent]

@@ -8,7 +8,7 @@ import { EditProfileSheet } from '@/components/EditProfileSheet';
 import { LogsSection } from '@/components/LogsSection';
 import { Body, Button, Card, H1, H2, Muted, Screen, Select } from '@/components/ui';
 import { disconnectHealthConnect, getHcStatus, type HcStatus } from '@/health/healthConnect';
-import { Api } from '@/lib/api';
+import { Api, describeCgm } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useColors, useThemePref } from '@/lib/theme';
 
@@ -25,6 +25,10 @@ export default function Profile() {
   // Shared with Home + auto-sync — one cache entry, so both screens always agree.
   const { data: hc = { connected: false } as HcStatus } =
     useQuery({ queryKey: ['hc-status'], queryFn: getHcStatus });
+  const { data: cgmStat } = useQuery({
+    queryKey: ['cgm-status'], queryFn: () => Api.cgmStatus(), refetchInterval: 60_000, retry: 0,
+  });
+  const cgm = describeCgm(cgmStat);
 
   const dash = (v: any) => (v === null || v === undefined || v === '' ? '—' : String(v));
   const bp = p?.bp_systolic && p?.bp_diastolic ? `${p.bp_systolic} / ${p.bp_diastolic}` : '—';
@@ -91,9 +95,10 @@ export default function Profile() {
               dot={hc.connected ? c.inRange : c.textMuted}
               action={hc.connected ? 'Disconnect' : undefined}
               onPress={hc.connected ? onDisconnectHc : undefined} c={c} top={false} />
-            <Row name="xDRIP+ (CGM)" status="Stream your glucose" dot={c.textMuted}
-              action="Set up" onPress={() => router.push('/cgm')} c={c} top />
-            <Row name="Junction (CGM)" status="Coming soon" dot={c.textMuted} c={c} top />
+            <Row name="CGM (Libre / Dexcom)" status={cgm.text}
+              dot={cgm.connected ? c.inRange : c.textMuted}
+              action={cgm.connected ? 'Manage' : 'Set up'}
+              onPress={() => router.push('/cgm')} c={c} top />
           </Card>
 
           <H2>Account</H2>

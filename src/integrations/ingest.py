@@ -27,6 +27,29 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def with_serialization_retry(fn, db, *args, attempts: int = 3, **kwargs):
+    """Run an ingest function, retrying CockroachDB serialization aborts (pgcode 40001).
+
+    Cockroach runs SERIALIZABLE and aborts one side of a write-write conflict with a
+    retryable error — e.g. a Junction webhook and a Health Connect sync upserting the
+    same activity row. The ingest functions are idempotent, so re-running is safe.
+    """
+    import time as _time
+
+    from sqlalchemy.exc import DBAPIError
+
+    for attempt in range(attempts):
+        try:
+            return fn(db, *args, **kwargs)
+        except DBAPIError as exc:
+            retryable = getattr(getattr(exc, "orig", None), "pgcode", None) == "40001"
+            db.rollback()
+            if retryable and attempt < attempts - 1:
+                _time.sleep(0.1 * (attempt + 1))
+                continue
+            raise
+
+
 def _ts_key(ts: datetime) -> datetime:
     """Normalise a timestamp for dedup-dict keys: naive-UTC. Postgres returns
     tz-aware rows while SQLite returns naive — without this, comparing incoming

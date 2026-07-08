@@ -10,7 +10,7 @@ import { GlucoseChart } from '@/components/GlucoseChart';
 import { LogSheet } from '@/components/LogSheet';
 import { Body, Card, H1, H2, Muted, Pill, Screen } from '@/components/ui';
 import { getHcStatus, openHealthConnect, syncHealthConnect, type HcStatus } from '@/health/healthConnect';
-import { Api } from '@/lib/api';
+import { Api, describeCgm } from '@/lib/api';
 import { useColors } from '@/lib/theme';
 
 const HORIZONS = [30, 60, 90, 120];
@@ -32,12 +32,13 @@ export default function Home() {
   const connectionsY = useRef(0);
   const [highlight, setHighlight] = useState<null | 'cgm' | 'hc'>(null);
 
-  // Real forecast only — no mock. Refetch while a personal model trains so the
-  // graph swaps to the personal forecast the moment it's ready.
+  // Real forecast only — no mock. Polls every 60s so readings that land server-side
+  // (Junction webhooks / background sync) appear without user action; 15s while a
+  // personal model trains so the graph swaps the moment it's ready.
   const { data: ts, isLoading } = useQuery({
     queryKey: ['timeseries'],
     queryFn: () => Api.timeseries(6),
-    refetchInterval: (q) => (q.state.data?.training ? 15_000 : false),
+    refetchInterval: (q) => (q.state.data?.training ? 15_000 : 60_000),
   });
   const { data: recs } = useQuery({ queryKey: ['recommendations'], queryFn: () => Api.recommendations() });
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: () => Api.getProfile() });
@@ -46,6 +47,11 @@ export default function Home() {
   // auto-sync hook all read/update this one cache entry, so screens never disagree.
   const { data: hc = { connected: false } as HcStatus } =
     useQuery({ queryKey: ['hc-status'], queryFn: getHcStatus });
+  // Same idea for the CGM link (Junction/xDRIP) — one query, every screen agrees.
+  const { data: cgmStat } = useQuery({
+    queryKey: ['cgm-status'], queryFn: () => Api.cgmStatus(), refetchInterval: 60_000, retry: 0,
+  });
+  const cgm = describeCgm(cgmStat);
   const firstName = (profile?.first_name || profile?.name?.trim().split(/\s+/)[0] || '').trim();
   useEffect(() => { AsyncStorage.getItem(MODE_KEY).then((v) => { if (v === 'basic' || v === 'personalized') setMode(v); setModeHydrated(true); }); }, []);
   const pickMode = useCallback((m: Mode) => { setMode(m); AsyncStorage.setItem(MODE_KEY, m); }, []);
@@ -161,15 +167,17 @@ export default function Home() {
               <ConnRow
                 dot={hc.connected ? c.inRange : c.textMuted}
                 title="Health Connect"
-                subtitle={syncing ? 'Syncing…' : hc.connected ? `Connected${hc.lastSync ? ` · synced ${syncedLabel(hc.lastSync)}` : ''}` : 'Watch data — HR, steps, sleep, SpO₂'}
+                subtitle={syncing ? 'Syncing…' : hc.connected
+                  ? `Connected${hc.lastSync ? ` · synced ${syncedLabel(hc.lastSync)}` : ''}`
+                  : firstName ? `${firstName}, link your watch — HR, steps, sleep, SpO₂` : 'Watch data — HR, steps, sleep, SpO₂'}
                 action={syncing ? 'Syncing…' : hc.connected ? 'Sync' : 'Sync now'}
                 onPress={connectHealthConnect} disabled={syncing}
                 border={highlight === 'hc' ? c.accent : undefined} c={c} />
               <ConnRow
-                dot={c.textMuted} top
+                dot={cgm.connected ? c.inRange : c.textMuted} top
                 title="CGM (Libre / Dexcom)"
-                subtitle="Stream with xDRIP+ · Junction soon"
-                action="Set up" onPress={() => router.push('/cgm')}
+                subtitle={cgm.text}
+                action={cgm.connected ? 'Manage' : 'Set up'} onPress={() => router.push('/cgm')}
                 border={highlight === 'cgm' ? c.accent : undefined} c={c} />
             </Card>
           </View>
@@ -206,7 +214,7 @@ export default function Home() {
     return (
       <Card>
         {training && <TrainingBanner c={c} phase={training.phase} />}
-        {status === 'no_watch' && <WatchGateNotice c={c} watch={ts?.watch} onConnect={() => flashConnector('hc')} />}
+        {status === 'no_watch' && <WatchGateNotice c={c} watch={ts?.watch} name={firstName} onConnect={() => flashConnector('hc')} />}
         {(() => {
           const stale = raw.length > 0 && (Date.now() - now) / 60000 > 20;   // CGM reads ~5min
           return (
@@ -249,12 +257,34 @@ export default function Home() {
     );
   }
 
-  // ── Basic (watch) view — watch insights; glucose estimate deferred ─────────
+  // ── Basic (watch) view — Virtual CGM; steps aside while a real CGM streams ──
   function renderBasic() {
+    // A real sensor is delivering readings → Personalized is the live view.
+    // Virtual CGM (an estimate) must never compete with actual measurements.
+    if (raw.length > 0) {
+      return (
+        <Card>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Ionicons name="pulse-outline" size={18} color={c.accent} />
+            <Body style={{ fontWeight: '600', flex: 1 }}>
+              {firstName ? `${firstName}, your CGM is streaming` : 'Your CGM is streaming'} 🎉
+            </Body>
+          </View>
+          <Muted style={{ marginBottom: 12 }}>
+            Virtual CGM is for days without a sensor — right now you have the real thing, so
+            Personalized mode is your live view with actual readings and forecasts.
+          </Muted>
+          <Pressable onPress={() => pickMode('personalized')}
+            style={{ backgroundColor: c.accent, borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}>
+            <Body style={{ color: c.onAccent, fontWeight: '600' }}>Go to Personalized</Body>
+          </Pressable>
+        </Card>
+      );
+    }
     if (!hc.connected) {
       return (
         <EmptyState c={c}
-          icon="watch-outline" title="Connect your watch"
+          icon="watch-outline" title={firstName ? `${firstName}, connect your watch` : 'Connect your watch'}
           body="Virtual CGM mode uses your watch (heart rate, steps, sleep) plus your food logs. Connect Health Connect to get started."
           cta="Connect your watch" onPress={() => flashConnector('hc')} />
       );
@@ -292,7 +322,7 @@ export default function Home() {
             </View>
           </>
         ) : (
-          <WatchWaitProgress c={c} watch={ts?.watch} />
+          <WatchWaitProgress c={c} watch={ts?.watch} name={firstName} />
         )}
         <Muted style={{ marginTop: 10 }}>
           Virtual CGM estimates your glucose from your watch data using our standard base model. For forecasts tuned to your body, switch to Personalized.
@@ -302,7 +332,7 @@ export default function Home() {
   }
 }
 
-function WatchWaitProgress({ c, watch }: any) {
+function WatchWaitProgress({ c, watch, name }: any) {
   // How far the watch gate is from unlocking predictions: needs `need` recent
   // heart-rate readings, flowing without long gaps (see lifecycle watch-gate).
   const have = watch?.have ?? 0;
@@ -361,7 +391,7 @@ function WatchWaitProgress({ c, watch }: any) {
         {remain > 0
           ? `${have} of ${need} readings in — the clock updates as readings arrive.`
           : eta == null
-            ? 'Wear your watch and tap “Sync now” — predictions unlock after 8 heart-rate readings.'
+            ? `Wear your watch${name ? `, ${name}` : ''} and tap “Sync now” — predictions unlock after 8 heart-rate readings.`
             : `${have} of ${need} readings in — waiting for your next sync to finish the set.`}
       </Muted>
     </View>
@@ -382,22 +412,26 @@ function LearningNote({ c, status, ts }: any) {
   return <Muted style={{ marginTop: 12 }}>{text}</Muted>;
 }
 
-function WatchGateNotice({ c, watch, onConnect }: any) {
+function WatchGateNotice({ c, watch, name, onConnect }: any) {
   const have = watch?.have ?? 0;
+  const stale = have > 0;   // has readings, just not fresh/enough → "sync", not "connect"
   return (
     <View style={{ backgroundColor: c.surfaceAlt, borderRadius: 12, padding: 12, marginBottom: 12 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <Ionicons name="watch-outline" size={18} color={c.accent} />
-        <Body style={{ fontWeight: '700', flex: 1 }}>Connect your watch to turn on forecasts</Body>
+        <Body style={{ fontWeight: '700', flex: 1 }}>
+          {name ? `${name}, ` : ''}{stale ? 'your watch went quiet — sync to resume forecasts'
+            : 'connect your watch to turn on forecasts'}
+        </Body>
       </View>
       <Muted>
-        Your CGM is streaming — but forecasts need live watch data (heart rate). {have > 0
-          ? `Only ${have} recent reading${have === 1 ? '' : 's'} — keep the watch on & syncing.`
-          : 'No recent watch data is coming in.'} Until then you’ll see your actual CGM readings only.
+        Your CGM is streaming — but your forecast reads your heart rate too. {stale
+          ? `Only ${have} recent reading${have === 1 ? '' : 's'} came through — put the watch on and sync so it catches up.`
+          : 'No watch data is coming in yet.'} Until then you’ll see your actual CGM readings only.
       </Muted>
       <Pressable onPress={onConnect}
         style={{ marginTop: 10, backgroundColor: c.accent, borderRadius: 10, paddingVertical: 11, alignItems: 'center' }}>
-        <Body style={{ color: c.onAccent, fontWeight: '600' }}>Connect / sync watch</Body>
+        <Body style={{ color: c.onAccent, fontWeight: '600' }}>{stale ? 'Sync my watch' : 'Connect my watch'}</Body>
       </Pressable>
     </View>
   );

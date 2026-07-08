@@ -85,6 +85,9 @@ def get_link_token(
     db: Session = Depends(get_db),
 ) -> LinkTokenResponse:
     """Create a Junction user for this patient (idempotent) and return a link token."""
+    if not client.api_key:
+        raise HTTPException(status_code=503,
+                            detail="Junction isn't configured on this server yet (missing JUNCTION_API_KEY).")
     junction_uid = client.ensure_user(current_user, db)
     data = client.get_link_token(junction_uid)
     return LinkTokenResponse(
@@ -207,11 +210,21 @@ async def junction_webhook(
     if not user:
         return {"received": True, "event_type": event_type, "matched_user": False}
 
-    if event_type in ("daily.data.glucose.created", "daily.data.glucose.updated"):
-        ingest_cgm_readings(db, client.parse_webhook_glucose(user.id, data), commit=False)
-        cgm_router.record_junction_ok(db, user)
-    elif event_type in ("daily.data.activity.created", "daily.data.activity.updated"):
-        upsert_activity(db, client.parse_webhook_activity(user.id, data), commit=False)
-
-    db.commit()
+    # Retry Cockroach serialization aborts (40001): concurrent webhooks / HC syncs can
+    # write the same rows; parsing is pure and ingest is idempotent, so re-running is safe.
+    from sqlalchemy.exc import DBAPIError
+    for attempt in range(3):
+        try:
+            if event_type in ("daily.data.glucose.created", "daily.data.glucose.updated"):
+                ingest_cgm_readings(db, client.parse_webhook_glucose(user.id, data), commit=False)
+                cgm_router.record_junction_ok(db, user)
+            elif event_type in ("daily.data.activity.created", "daily.data.activity.updated"):
+                upsert_activity(db, client.parse_webhook_activity(user.id, data), commit=False)
+            db.commit()
+            break
+        except DBAPIError as exc:
+            db.rollback()
+            if getattr(getattr(exc, "orig", None), "pgcode", None) == "40001" and attempt < 2:
+                continue
+            raise
     return {"received": True, "event_type": event_type, "matched_user": True}

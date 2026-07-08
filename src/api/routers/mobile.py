@@ -244,11 +244,13 @@ def health_connect_sync(body: HealthConnectSync,
     Goes through the shared dedup ingest path, so re-syncing the same window is
     idempotent (CGM deduped by (user, timestamp); activity upserted by day).
     """
+    from src.integrations.ingest import with_serialization_retry
+
     readings = [CgmReadingIngest(
         user_id=user.id, timestamp=_parse_instant(g.t), glucose_mgdl=float(g.mgdl),
         source="health_connect", ingested_via="push", device_type="cgm",
     ) for g in body.glucose]
-    n_cgm = ingest_cgm_readings(db, readings)
+    n_cgm = with_serialization_retry(ingest_cgm_readings, db, readings)
 
     days = [ActivityIngest(
         user_id=user.id, calendar_date=a.date, provider="health_connect",
@@ -256,7 +258,7 @@ def health_connect_sync(body: HealthConnectSync,
         hr_avg_bpm=a.hr_avg_bpm, hr_resting_bpm=a.hr_resting_bpm,
         spo2_avg=a.spo2_avg, sleep_hours=a.sleep_hours,
     ) for a in body.activity]
-    n_act = upsert_activity(db, days)
+    n_act = with_serialization_retry(upsert_activity, db, days)
 
     # Intraday (realtime) samples → wearable_samples (drives real HR features).
     # Non-fatal: if the table isn't migrated yet, the daily activity sync above still succeeds.
@@ -267,7 +269,7 @@ def health_connect_sync(body: HealthConnectSync,
             "timestamp": _parse_instant(s.t), "hr_bpm": s.hr_bpm, "spo2_pct": s.spo2_pct,
             "steps": s.steps, "calories_active": s.calories_active, "distance_m": s.distance_m,
         } for s in body.samples]
-        n_samples = ingest_wearable_samples(db, user.id, sample_rows)
+        n_samples = with_serialization_retry(ingest_wearable_samples, db, user.id, sample_rows)
     except Exception as exc:                           # noqa: BLE001
         db.rollback()
         log.warning(f"wearable samples ingest skipped (table not migrated?): {exc}")

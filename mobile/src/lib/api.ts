@@ -46,6 +46,27 @@ api.interceptors.response.use(
   },
 );
 
+// ── CGM connection status (shared by Home + Profile so they never disagree) ──
+export type CgmStatus = {
+  active_source: string;
+  junction_fresh: boolean;
+  xdrip_fresh: boolean;
+  last_junction_ok_at?: string | null;
+  last_xdrip_at?: string | null;
+  staleness_minutes: number;
+};
+
+/** One place that turns /cgm/status into the dot+label every screen shows. */
+export function describeCgm(s?: CgmStatus): { connected: boolean; text: string } {
+  if (!s) return { connected: false, text: 'Stream Libre/Dexcom — set up in 2 min' };
+  if (s.junction_fresh) return { connected: true, text: 'Streaming · Libre/Dexcom via Junction' };
+  if (s.xdrip_fresh) return { connected: true, text: 'Streaming · xDRIP+' };
+  if (s.last_junction_ok_at || s.last_xdrip_at) {
+    return { connected: false, text: 'Linked · waiting for fresh readings' };
+  }
+  return { connected: false, text: 'Stream Libre/Dexcom — set up in 2 min' };
+}
+
 // ── Types ───────────────────────────────────────────────────────────────────
 export type Profile = {
   email: string; name?: string; first_name?: string; last_name?: string;
@@ -209,6 +230,14 @@ export const Api = {
   },
   async junctionLink(): Promise<{ junction_user_id: string; link_token: string; link_web_url: string }> {
     const { data } = await api.post('/wearable/link-token');
+    return data;
+  },
+  async junctionDevices(): Promise<{ provider_id: string; name: string; logo?: string }[]> {
+    const { data } = await api.get('/wearable/devices');
+    return data;
+  },
+  async cgmStatus(): Promise<CgmStatus> {
+    const { data } = await api.get('/cgm/status');
     return data;
   },
   async junctionSync(): Promise<{ glucose_readings_saved: number; activity_days_saved: number; message: string }> {
