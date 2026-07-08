@@ -215,6 +215,13 @@ export const Api = {
     const { data } = await api.get('/coach/messages');
     return data;
   },
+  /** Regenerate suggestions now (fired after meal logs / syncs — event-driven,
+   *  so the cards visibly react to what the user just did). Long timeout: the
+   *  server runs the forecast + LLM phrasing. */
+  async refreshRecommendations(): Promise<Recommendation[]> {
+    const { data } = await api.post('/coach/recommendations/refresh', undefined, { timeout: 60_000 });
+    return data;
+  },
   async recommendations(): Promise<Recommendation[]> {
     const { data } = await api.get('/coach/recommendations');
     return data;

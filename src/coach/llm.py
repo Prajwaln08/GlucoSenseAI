@@ -265,6 +265,52 @@ def chat_stream(db: Session, user: User, ctx: dict, history: list[dict], message
     yield {"done": True, "reply": reply, "actions": actions}
 
 
+# ── Recommendation phrasing (rules decide WHAT, the LLM phrases HOW) ─────────
+
+def polish_recommendations(ctx: dict, recs: list[dict]) -> list[dict]:
+    """Rewrite rule-generated suggestion bodies in Doctor Gluco's warm voice.
+
+    The facts/numbers come from rules.py and MUST survive verbatim; on any model
+    hiccup the original rule text ships unchanged. Ollama-only (one small call).
+    """
+    if _provider() != "ollama" or not recs:
+        return recs
+    try:
+        import httpx
+        name = (ctx.get("profile") or {}).get("first_name") or ""
+        prompt = (
+            "You are Doctor Gluco, a warm personal doctor. Rewrite each suggestion body "
+            "below in your voice: friendly, personal, 1-2 short sentences"
+            + (f", addressing the user as {name} where natural" if name else "")
+            + ". KEEP every number and unit exactly as given. Do not add medical claims. "
+            "Return ONLY a JSON array of the rewritten body strings, same order.\n\n"
+            + json.dumps([{"title": r["title"], "body": r["body"]} for r in recs])
+        )
+        with httpx.Client(base_url=config.OLLAMA_BASE_URL, timeout=30.0) as client:
+            r = client.post("/api/chat", json={
+                "model": config.LLM_MODEL, "stream": False, "format": "json",
+                "messages": [{"role": "user", "content": prompt}],
+                "keep_alive": "30m", "options": {"num_predict": 400, "temperature": 0.5},
+            })
+            r.raise_for_status()
+            out = json.loads((r.json().get("message") or {}).get("content") or "null")
+        # accept {"...": [..]} or bare [...] — models wrap json mode output either way
+        if isinstance(out, dict):
+            out = next((v for v in out.values() if isinstance(v, list)), None)
+        if isinstance(out, list) and len(out) == len(recs):
+            import re
+            for rec, body in zip(recs, out):
+                # A rewrite that loses any of the rule's numbers is worse than the
+                # original — the facts ARE the value. Reject it, keep the rule text.
+                nums = set(re.findall(r"\d+\.?\d*", rec["body"]))
+                if (isinstance(body, str) and 20 <= len(body) <= 400
+                        and all(n in body for n in nums)):
+                    rec["body"] = body.strip()
+    except Exception as exc:                               # noqa: BLE001
+        log.warning(f"recommendation polish skipped: {exc}")
+    return recs
+
+
 # ── Rule-based fallback ───────────────────────────────────────────────────────
 
 def _fallback(ctx: dict, message: str) -> str:

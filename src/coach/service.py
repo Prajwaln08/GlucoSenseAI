@@ -44,8 +44,10 @@ def chat_stream(db: Session, user: User, message: str):
 
 
 def generate_recommendations(db: Session, user: User) -> list[dict]:
-    ctx = build_context(db, user)
-    recs = rules.recommendations(ctx)
+    # include_forecast → T1/T2 (predicted low/high, forecast-reactive) rules can fire;
+    # then the LLM rewrites the bodies in Doctor Gluco's voice (numbers preserved).
+    ctx = build_context(db, user, include_forecast=True)
+    recs = llm.polish_recommendations(ctx, rules.recommendations(ctx))
 
     # Replace the active set.
     (db.query(Recommendation)
@@ -58,12 +60,25 @@ def generate_recommendations(db: Session, user: User) -> list[dict]:
     return [_rec_dict(r) for r in rows]
 
 
+_RECS_MAX_AGE_H = 3
+
+
 def active_recommendations(db: Session, user: User) -> list[dict]:
     rows = (db.query(Recommendation)
             .filter(Recommendation.user_id_fk == user.id, Recommendation.active.is_(True))
             .order_by(Recommendation.created_at.desc()).all())
     if not rows:
         return generate_recommendations(db, user)
+    # Stale set → regenerate so suggestions track the user's day, not yesterday's.
+    newest = rows[0].created_at
+    if newest is not None:
+        from datetime import datetime, timedelta, timezone
+        ref = newest if newest.tzinfo else newest.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - ref > timedelta(hours=_RECS_MAX_AGE_H):
+            try:
+                return generate_recommendations(db, user)
+            except Exception:                          # noqa: BLE001 — stale beats broken
+                pass
     return [_rec_dict(r) for r in rows]
 
 

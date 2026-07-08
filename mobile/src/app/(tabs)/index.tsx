@@ -68,8 +68,11 @@ export default function Home() {
     setSyncing(false);
     if (res.ok) {
       qc.setQueryData(['hc-status'], { connected: true, lastSync: new Date().toISOString() });
-      qc.invalidateQueries({ queryKey: ['recommendations'] });
       qc.invalidateQueries({ queryKey: ['timeseries'] });        // intraday HR feeds the forecast + watch-gate progress
+      // Fresh data just landed → regenerate suggestions against it.
+      Api.refreshRecommendations()
+        .then(() => qc.invalidateQueries({ queryKey: ['recommendations'] }))
+        .catch(() => qc.invalidateQueries({ queryKey: ['recommendations'] }));
       Alert.alert('Health Connect', `Synced ${res.samples ?? 0} realtime readings + ${res.activity_days ?? 0} day(s) of activity.`);
     } else if (res.reason === 'denied' || res.reason === 'unavailable') {
       Alert.alert('Health Connect', res.message ?? 'Could not sync.',
@@ -190,7 +193,10 @@ export default function Home() {
           onLogged={() => {
             qc.invalidateQueries({ queryKey: ['timeseries'] });
             qc.invalidateQueries({ queryKey: ['food-recent'] });
-            qc.invalidateQueries({ queryKey: ['recommendations'] });
+            // Event-driven suggestions: regenerate so the cards react to this log.
+            Api.refreshRecommendations()
+              .then(() => qc.invalidateQueries({ queryKey: ['recommendations'] }))
+              .catch(() => qc.invalidateQueries({ queryKey: ['recommendations'] }));
           }}
         />
       </SafeAreaView>

@@ -38,10 +38,23 @@ def _glucose_stats(points: list[float]) -> dict | None:
     }
 
 
-def build_context(db: Session, user: User) -> dict:
-    """Read-only snapshot: profile + glucose + forecast + recent food + activity."""
+def build_context(db: Session, user: User, *, include_forecast: bool = False) -> dict:
+    """Read-only snapshot: profile + glucose + forecast + recent food + activity.
+
+    ``include_forecast`` runs the live model for the nearest-horizon prediction —
+    a few seconds of work, so it's on only for recommendation generation, not chat.
+    """
     glucose: dict | None = None
     predicted: dict | None = None
+    if include_forecast:
+        try:
+            from src.serving.live_inference import timeseries_for_user
+            pts = (timeseries_for_user(db, user, hours=3) or {}).get("predicted") or []
+            if pts:
+                predicted = {"mgdl": float(pts[0]["mgdl"]),
+                             "horizon_min": int(pts[0].get("horizon_min") or 30)}
+        except Exception:                              # noqa: BLE001 — forecast is a bonus, never a blocker
+            predicted = None
 
     # Glucose from the user's ACTUAL CGM readings only (no dataset/replay shortcut — keeps the
     # coach consistent with Home, which is real-serving only).
