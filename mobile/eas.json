@@ -13,14 +13,14 @@
       "distribution": "internal",
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://glucosense-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://glucosense-api-dj43.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": { "buildType": "app-bundle" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://glucosense-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://glucosense-api-dj43.onrender.com"
       }
     }
   },
