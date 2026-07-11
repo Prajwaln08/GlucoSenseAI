@@ -14,7 +14,7 @@ No external API calls live here — callers pass already-normalised dataclasses.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,33 @@ from src.utils.metrics import activity_days_upserted, cgm_readings_ingested
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def correct_junction_clock(db: Session, user, readings: list) -> list:
+    """Apply the user's learned Junction clock offset; ratchet it up when the batch
+    proves it's too small (readings stamped in the future are physically impossible).
+
+    Persisting the offset on the user keeps every ingest path — webhook, poll,
+    manual sync — on ONE correction basis, so timestamp-dedup stays stable.
+    Caller is responsible for the surrounding commit.
+    """
+    import math
+    from dataclasses import replace
+
+    if not readings:
+        return readings
+    tolerance, quarter = timedelta(minutes=5), 15
+    stored_min = int(user.junction_clock_offset_min or 0)
+    newest = max(r.timestamp for r in readings)
+    lead = (newest - timedelta(minutes=stored_min)) - _now()
+    if lead > tolerance:
+        stored_min += math.ceil((lead - tolerance) / timedelta(minutes=quarter)) * quarter
+        user.junction_clock_offset_min = stored_min
+        db.add(user)
+    if not stored_min:
+        return readings
+    off = timedelta(minutes=stored_min)
+    return [replace(r, timestamp=r.timestamp - off) for r in readings]
 
 
 def with_serialization_retry(fn, db, *args, attempts: int = 3, **kwargs):

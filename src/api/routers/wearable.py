@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from src.api.deps import get_current_user, get_db
 from src.db.models import User, WearableActivity
 from src.integrations import cgm_router
-from src.integrations.ingest import ingest_cgm_readings, upsert_activity
+from src.integrations.ingest import correct_junction_clock, ingest_cgm_readings, upsert_activity
 from src.integrations.junction import JunctionClient
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,7 @@ def sync_wearable_data(
     start_date = end_date - timedelta(days=7)
 
     readings = client.fetch_glucose(juid, current_user.id, start_date, end_date, ingested_via="manual_sync")
+    readings = correct_junction_clock(db, current_user, readings)
     activity = client.fetch_activity(juid, current_user.id, start_date, end_date)
 
     glucose_saved = ingest_cgm_readings(db, readings, commit=False)
@@ -216,7 +217,8 @@ async def junction_webhook(
     for attempt in range(3):
         try:
             if event_type in ("daily.data.glucose.created", "daily.data.glucose.updated"):
-                ingest_cgm_readings(db, client.parse_webhook_glucose(user.id, data), commit=False)
+                readings = correct_junction_clock(db, user, client.parse_webhook_glucose(user.id, data))
+                ingest_cgm_readings(db, readings, commit=False)
                 cgm_router.record_junction_ok(db, user)
             elif event_type in ("daily.data.activity.created", "daily.data.activity.updated"):
                 upsert_activity(db, client.parse_webhook_activity(user.id, data), commit=False)

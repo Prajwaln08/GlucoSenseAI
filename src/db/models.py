@@ -60,6 +60,8 @@ class User(Base):
     created_at      = Column(DateTime(timezone=True), default=_now, nullable=False)
     # Junction wearable integration
     junction_user_id = Column(String, nullable=True, index=True)
+    # Learned clock error of the user's Junction provider stream (minutes; ratchets up).
+    junction_clock_offset_min = Column(Integer, nullable=True)
     # Multi-source CGM failover (Junction primary → xDRIP fallback)
     cgm_active_source       = Column(String, nullable=True)   # "junction" | "xdrip"
     cgm_last_junction_ok_at = Column(DateTime(timezone=True), nullable=True)

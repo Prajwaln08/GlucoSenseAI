@@ -19,7 +19,7 @@ import hmac
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
@@ -31,40 +31,14 @@ logger = logging.getLogger(__name__)
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
-# A reading may plausibly arrive up to this far "ahead" (clock jitter); beyond it we
-# treat the lead as a device/provider clock error and correct the batch.
-_FUTURE_TOLERANCE = timedelta(minutes=5)
-_QUARTER = timedelta(minutes=15)
-
-
 def _parse_ts(ts_str: str) -> datetime:
+    """Provider timestamp → tz-aware datetime (naive stamps are assumed UTC-labeled).
+
+    NOTE: some providers (freestyle_libre observed) stamp readings in device-local /
+    skewed clocks labeled as UTC. The persisted, ratcheting per-user correction lives
+    in ingest.correct_junction_clock — every ingest path must run it before writing."""
     ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
     return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
-
-
-def _batch_clock_correction(stamps: list[datetime]) -> timedelta:
-    """Infer a provider/device clock error from physically-impossible future stamps.
-
-    Some providers (seen with freestyle_libre) deliver LOCAL wall-clock times labeled
-    as UTC with no timezone metadata — the stream's newest stamp then leads real UTC
-    by the device's UTC offset. Since data from the future cannot exist, the lead
-    (rounded to the nearest quarter-hour — all real UTC offsets are quarter-hour
-    multiples) IS the error; subtracting it restores true UTC for the whole batch.
-    Returns timedelta(0) when the batch looks sane.
-    """
-    if not stamps:
-        return timedelta(0)
-    lead = max(stamps) - datetime.now(timezone.utc)
-    if lead <= _FUTURE_TOLERANCE:
-        return timedelta(0)
-    # Smallest quarter-hour multiple that brings the batch back inside tolerance —
-    # ceiling (not nearest) so no reading can remain in the future after correction.
-    import math
-    correction = math.ceil((lead - _FUTURE_TOLERANCE) / _QUARTER) * _QUARTER
-    correction = max(correction, _QUARTER)
-    logger.warning("Junction batch stamped %.0f min in the future — correcting by -%s "
-                   "(provider clock/timezone error)", lead.total_seconds() / 60, correction)
-    return correction
 
 
 class JunctionClient:
@@ -173,7 +147,9 @@ class JunctionClient:
             resp = self.get(f"/v2/timeseries/{junction_uid}/glucose/grouped", params=params)
         except httpx.HTTPStatusError:
             return out  # no glucose provider connected — non-fatal
-        raw: list[tuple[datetime, float, str, str]] = []
+        # NOTE: returns RAW provider stamps — callers must run
+        # ingest.correct_junction_clock(db, user, readings) before ingesting, which
+        # applies the user's persisted clock-offset (single correction basis).
         for provider_name, group_list in (resp.get("groups", {}) or {}).items():
             for group in group_list:
                 for reading in group.get("data", []):
@@ -181,14 +157,10 @@ class JunctionClient:
                     value = reading.get("value")
                     if not ts_str or value is None:
                         continue
-                    raw.append((_parse_ts(ts_str), value, reading.get("unit", "mmol/L"), provider_name))
-        # Store TRUE UTC: undo provider local-time-as-UTC clock errors (batch-level).
-        correction = _batch_clock_correction([r[0] for r in raw])
-        for recorded_at, value, unit, provider_name in raw:
-            out.append(cgm_from_value(
-                user_id, recorded_at - correction, value, unit,
-                source="junction", source_device_id=provider_name, ingested_via=ingested_via,
-            ))
+                    out.append(cgm_from_value(
+                        user_id, _parse_ts(ts_str), value, reading.get("unit", "mmol/L"),
+                        source="junction", source_device_id=provider_name, ingested_via=ingested_via,
+                    ))
         return out
 
     def fetch_activity(self, junction_uid: str, user_id: str, start, end) -> list[ActivityIngest]:
@@ -233,20 +205,20 @@ class JunctionClient:
 
     @staticmethod
     def parse_webhook_glucose(user_id: str, data: dict) -> list:
-        """Webhook glucose event → list[CgmReadingIngest] (true-UTC corrected)."""
+        """Webhook glucose event → list[CgmReadingIngest] (RAW stamps — caller applies
+        ingest.correct_junction_clock before ingesting)."""
         provider_name = (data.get("source") or {}).get("slug", "junction")
-        raw: list[tuple[datetime, float, str]] = []
+        out = []
         for reading in data.get("data", []):
             ts_str = reading.get("timestamp")
             value = reading.get("value")
             if not ts_str or value is None:
                 continue
-            raw.append((_parse_ts(ts_str), value, reading.get("unit", "mmol/L")))
-        correction = _batch_clock_correction([r[0] for r in raw])
-        return [cgm_from_value(
-            user_id, recorded_at - correction, value, unit,
-            source="junction", source_device_id=provider_name, ingested_via="webhook",
-        ) for recorded_at, value, unit in raw]
+            out.append(cgm_from_value(
+                user_id, _parse_ts(ts_str), value, reading.get("unit", "mmol/L"),
+                source="junction", source_device_id=provider_name, ingested_via="webhook",
+            ))
+        return out
 
     @staticmethod
     def parse_webhook_activity(user_id: str, data: dict) -> list[ActivityIngest]:

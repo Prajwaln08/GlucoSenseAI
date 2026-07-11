@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from src.db.models import User
 from src.db.session import SessionLocal
 from src.integrations import cgm_router
-from src.integrations.ingest import ingest_cgm_readings
+from src.integrations.ingest import correct_junction_clock, ingest_cgm_readings
 from src.integrations.junction import JunctionClient
 from src.tasks.celery_app import celery_app
 
@@ -50,6 +50,7 @@ def poll_junction_glucose() -> dict:
                 readings = client.fetch_glucose(
                     user.junction_user_id, user.id, start_date, end_date, ingested_via="poll"
                 )
+                readings = correct_junction_clock(db, user, readings)
                 saved = ingest_cgm_readings(db, readings, commit=False)
                 readings_saved += saved
                 # Heartbeat if we got data, OR if a health check confirms the link is alive.
