@@ -42,6 +42,8 @@ class XDripPayload(BaseModel):
     direction: str = "NotComputable"    # trend arrow string from xDRIP
     device: str = ""                    # CGM device identifier (optional)
 
+    model_config = {"extra": "ignore"}  # Nightscout entries carry extra fields (dateString, type…)
+
 
 class ReadingOut(BaseModel):
     id: str
@@ -99,6 +101,35 @@ def receive_xdrip_reading(
     if not saved:
         return {"saved": False, "reason": "duplicate"}
     return {"saved": True, "timestamp": reading.timestamp.isoformat(), "glucose_mgdl": reading.glucose_mgdl}
+
+
+@router.post("/entries", status_code=200)
+def receive_xdrip_entries(
+    payload: list[XDripPayload] | XDripPayload,
+    user_id: str = Query(..., description="Internal user UUID (users.id)"),
+    key: str | None = Query(None, description="Per-user xDRIP key (or send X-CGM-Key header)"),
+    x_cgm_key: str | None = Header(None, alias="X-CGM-Key"),
+    db: Session = Depends(get_db),
+    _: None = Depends(reading_rate_limit),
+) -> dict:
+    """Batch/backfill endpoint (Nightscout-style `entries` array): lets xDRIP+ upload a
+    whole day's history in one shot. Same auth as /reading; deduped, so re-sends are safe.
+    Also reachable by appending `/entries`-style uploads from Nightscout-format clients."""
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()  # noqa: E712
+    if not user:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    if not keys.verify_cgm_key(user, key or x_cgm_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing CGM key.")
+
+    items = payload if isinstance(payload, list) else [payload]
+    items = items[:2000]                                  # one day is ~288; hard-cap floods
+    readings = [normalize_xdrip(user_id=user.id, sgv=p.sgv, date_ms=p.date,
+                                direction=p.direction, device=p.device) for p in items]
+    saved = ingest_cgm_readings(db, readings, commit=False)
+    if saved:
+        cgm_router.record_xdrip(db, user)
+    db.commit()
+    return {"received": len(items), "saved": saved}
 
 
 @router.post("/key", response_model=CgmKeyResponse)
