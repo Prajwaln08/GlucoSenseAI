@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Linking, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Body, Button, Card, H2, Muted, Pill, Screen } from '@/components/ui';
@@ -11,18 +10,9 @@ import { useColors } from '@/lib/theme';
 
 export default function Cgm() {
   const c = useColors();
-  const qc = useQueryClient();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [jBusy, setJBusy] = useState<null | 'link' | 'sync'>(null);
   const [xdripUrl, setXdripUrl] = useState<string | null>(null);
-
-  // Junction devices this user already linked (empty until they connect).
-  const { data: devices } = useQuery({
-    queryKey: ['junction-devices'],
-    queryFn: () => Api.junctionDevices(),
-    retry: 0,
-  });
 
   async function getXdripUrl() {
     setBusy(true);
@@ -32,31 +22,6 @@ export default function Cgm() {
     } catch {
       Alert.alert('xDRIP+', 'Could not create your link right now. Please try again.');
     } finally { setBusy(false); }
-  }
-
-  async function connectJunction() {
-    setJBusy('link');
-    try {
-      const { link_web_url } = await Api.junctionLink();
-      await Linking.openURL(link_web_url);
-      Alert.alert('Junction', 'Finish linking your sensor in the browser, then come back and tap “Sync now”.');
-    } catch (e: any) {
-      Alert.alert('Junction', e?.response?.status === 503
-        ? 'Junction isn’t configured on this server yet — xDRIP+ above works in the meantime.'
-        : 'Could not start the Junction link. Please try again.');
-    } finally { setJBusy(null); }
-  }
-
-  async function syncJunction() {
-    setJBusy('sync');
-    try {
-      const r = await Api.junctionSync();
-      qc.invalidateQueries({ queryKey: ['junction-devices'] });
-      qc.invalidateQueries({ queryKey: ['timeseries'] });   // new readings → home graph
-      Alert.alert('Junction', r.message);
-    } catch (e: any) {
-      Alert.alert('Junction', e?.response?.data?.detail ?? 'Connect your sensor with Junction first.');
-    } finally { setJBusy(null); }
   }
 
   return (
@@ -101,29 +66,17 @@ export default function Cgm() {
             )}
           </Card>
 
-          {/* Junction — direct Libre/Dexcom account link (sandbox/demo until production) */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 4 }}>
-            <H2>Junction (Libre / Dexcom)</H2>
-            <View style={{ marginTop: -8 }}><Pill label="Demo mode" tone="muted" /></View>
-          </View>
+          {/* Junction — one-tap account linking; enabled when a production connector exists */}
+          <H2>Junction (Libre / Dexcom)</H2>
           <Card>
-            <Body style={{ fontWeight: '600', marginBottom: 4 }}>Direct sensor connect</Body>
-            <Muted style={{ marginBottom: 14 }}>
-              One-tap account linking is in demo mode for now — real Libre/Dexcom accounts can’t
-              connect here yet. For a real sensor, use xDRIP+ above (free, works today).
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Body style={{ fontWeight: '600' }}>Direct account connect</Body>
+              <Pill label="Coming soon" tone="muted" />
+            </View>
+            <Muted style={{ marginTop: 6 }}>
+              One-tap Libre/Dexcom account linking is on the way. For now, xDRIP+ above streams
+              your real sensor — free.
             </Muted>
-            {devices?.length ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <View style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: c.inRange }} />
-                <Body style={{ fontWeight: '600', flex: 1 }}>
-                  Connected: {devices.map((d) => d.name).join(', ')}
-                </Body>
-              </View>
-            ) : null}
-            <Button title={devices?.length ? 'Manage / relink' : 'Connect with Junction'}
-              onPress={connectJunction} loading={jBusy === 'link'} />
-            <Button title="Sync now" variant="ghost" onPress={syncJunction}
-              loading={jBusy === 'sync'} style={{ marginTop: 8 }} />
           </Card>
         </ScrollView>
       </SafeAreaView>
