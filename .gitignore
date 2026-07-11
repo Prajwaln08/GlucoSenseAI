@@ -123,3 +123,6 @@ htmlcov/
 # Local dev SQLite databases
 *.db
 local_dev.db
+
+# Private career/working docs — never publish
+docs/GAP_ANALYSIS.md
