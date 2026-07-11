@@ -101,13 +101,16 @@ export default function Cgm() {
             )}
           </Card>
 
-          {/* Junction — direct Libre/Dexcom account link */}
-          <H2>Junction (Libre / Dexcom)</H2>
+          {/* Junction — direct Libre/Dexcom account link (sandbox/demo until production) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 4 }}>
+            <H2>Junction (Libre / Dexcom)</H2>
+            <View style={{ marginTop: -8 }}><Pill label="Demo mode" tone="muted" /></View>
+          </View>
           <Card>
             <Body style={{ fontWeight: '600', marginBottom: 4 }}>Direct sensor connect</Body>
             <Muted style={{ marginBottom: 14 }}>
-              Link your FreeStyle Libre or Dexcom account once — your readings then stream in
-              automatically (no extra app needed).
+              One-tap account linking is in demo mode for now — real Libre/Dexcom accounts can’t
+              connect here yet. For a real sensor, use xDRIP+ above (free, works today).
             </Muted>
             {devices?.length ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
