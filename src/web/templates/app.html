@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlucoSense AI</title>
+<style>
+  :root{
+    --bg:#f6f8f8; --surface:#ffffff; --surface-alt:#eef2f2; --text:#101817; --muted:#5f6f6d;
+    --accent:#0d9488; --on-accent:#ffffff; --border:#e3e9e8; --good:#16a34a; --warn:#d97706;
+    --bad:#dc2626; --band:rgba(13,148,136,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0c1211; --surface:#141c1b; --surface-alt:#1d2726; --text:#e8efee; --muted:#8ba3a0;
+           --accent:#2dd4bf; --on-accent:#04211d; --border:#243230; --band:rgba(45,212,191,.08); }
+  }
+  *{box-sizing:border-box; margin:0}
+  body{background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:760px; margin:0 auto; padding:20px 16px 90px}
+  h1{font-size:26px; margin-bottom:2px} h2{font-size:17px; margin:22px 0 10px}
+  .muted{color:var(--muted); font-size:13.5px}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px; margin-bottom:12px}
+  .row{display:flex; align-items:center; gap:10px}
+  .grow{flex:1}
+  button{font:inherit; border:0; cursor:pointer; border-radius:12px; padding:11px 18px; background:var(--accent); color:var(--on-accent); font-weight:600}
+  button.ghost{background:var(--surface-alt); color:var(--text)}
+  button:disabled{opacity:.5; cursor:default}
+  input,select,textarea{font:inherit; width:100%; background:var(--surface-alt); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:11px 14px; margin-bottom:10px}
+  .pill{font-size:12px; font-weight:600; border-radius:999px; padding:3px 10px; background:var(--surface-alt)}
+  .pill.good{background:rgba(22,163,74,.14); color:var(--good)} .pill.warn{background:rgba(217,119,6,.14); color:var(--warn)} .pill.bad{background:rgba(220,38,38,.14); color:var(--bad)}
+  .tabs{position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--surface); border-top:1px solid var(--border); z-index:10}
+  .tabs a{flex:1; text-align:center; padding:12px 0 14px; color:var(--muted); text-decoration:none; font-size:12.5px; font-weight:600}
+  .tabs a.on{color:var(--accent)}
+  .tabs a span{display:block; font-size:20px}
+  .chips{display:flex; gap:8px; margin-top:12px; align-items:center; flex-wrap:wrap}
+  .chip{border-radius:999px; padding:6px 14px; background:var(--surface-alt); font-size:13px; cursor:pointer; user-select:none}
+  .chip.on{background:var(--accent); color:var(--on-accent)}
+  .big{font-size:40px; font-weight:700; line-height:1}
+  .msg{max-width:85%; border-radius:16px; padding:10px 14px; margin-bottom:8px; white-space:pre-wrap}
+  .msg.me{margin-left:auto; background:var(--accent); color:var(--on-accent)}
+  .msg.doc{background:var(--surface); border:1px solid var(--border)}
+  .chatbox{position:fixed; bottom:58px; left:0; right:0; background:var(--surface); border-top:1px solid var(--border); padding:10px 12px}
+  .chatbox .inner{max-width:760px; margin:0 auto; display:flex; gap:8px}
+  .chatbox input{margin:0; border-radius:999px}
+  .kv{display:flex; padding:9px 0; border-top:1px solid var(--border); font-size:14.5px}
+  .kv:first-child{border-top:0}
+  .kv b{flex:1; font-weight:500; color:var(--muted)} .kv span{text-align:right}
+  .dot{width:9px; height:9px; border-radius:99px; background:var(--muted); flex:none}
+  .dot.on{background:var(--good)}
+  .center{text-align:center; padding:26px 8px}
+  svg text{font-family:inherit}
+  .auth{max-width:400px; margin:8vh auto 0}
+  .err{color:var(--bad); font-size:13.5px; margin-bottom:8px; min-height:18px}
+  .clock{font-variant-numeric:tabular-nums; font-size:24px; font-weight:700; color:var(--accent)}
+  .bar{height:8px; border-radius:4px; background:var(--surface-alt); overflow:hidden; margin:10px 0}
+  .bar>div{height:100%; background:var(--accent); transition:width .5s}
+  .scroll-x{overflow-x:auto}
+  a.link{color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="root" class="wrap"></div>
+<script>
+'use strict';
+const $ = (s, el=document) => el.querySelector(s);
+const API = '';                                   // same origin
+const store = { get token(){return localStorage.getItem('gs.token')},
+                set token(v){v?localStorage.setItem('gs.token',v):localStorage.removeItem('gs.token')} };
+const state = { profile:null, ts:null, recs:[], cgm:null, foods:[], horizon:60, chat:[], sending:false, page:'home' };
+
+async function api(path, opts={}){
+  const headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  if (store.token) headers['Authorization'] = 'Bearer ' + store.token;
+  const r = await fetch(API+path, Object.assign({}, opts, {headers}));
+  if (r.status === 401 && !path.startsWith('/auth/')) { store.token=null; render(); throw new Error('unauthorized'); }
+  if (!r.ok) throw Object.assign(new Error('http '+r.status), {status:r.status, body: await r.text().catch(()=> '')});
+  const ct = r.headers.get('content-type')||'';
+  return ct.includes('json') ? r.json() : r.text();
+}
+
+/* ── auth ─────────────────────────────────────────────────────────────────── */
+async function login(email, pw){
+  const body = new URLSearchParams({username:email, password:pw});
+  const r = await fetch(API+'/auth/token', {method:'POST', body});
+  if (!r.ok) throw new Error('Wrong email or password');
+  store.token = (await r.json()).access_token;
+}
+async function registerUser(email, pw){
+  const r = await fetch(API+'/auth/register', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email, password:pw})});
+  if (!r.ok) throw new Error((await r.json().catch(()=>({})))?.detail || 'Could not register');
+  await login(email, pw);
+}
+
+/* ── data loads ───────────────────────────────────────────────────────────── */
+async function loadAll(){
+  const jobs = [
+    api('/me/profile').then(p=>state.profile=p),
+    api('/glucose/timeseries?hours=6').then(t=>state.ts=t).catch(()=>{}),
+    api('/coach/recommendations').then(r=>state.recs=r).catch(()=>state.recs=[]),
+    api('/cgm/status').then(c=>state.cgm=c).catch(()=>{}),
+    api('/food/logs?limit=30').then(f=>state.foods=f).catch(()=>state.foods=[]),
+  ];
+  await Promise.allSettled(jobs);
+}
+async function loadChat(){
+  try { state.chat = (await api('/coach/messages')).map(m=>({role:m.role, content:m.content})); }
+  catch { state.chat = []; }
+}
+
+/* ── chart (same behavior as the app: smooth, scrollable, food markers) ────── */
+function chartSVG(){
+  const ts = state.ts || {}; const raw = (ts.raw||[]).map(p=>({t:Date.parse(p.t), v:p.mgdl}));
+  const pred = (ts.predicted||[]).map(p=>({t:Date.parse(p.t), v:p.mgdl, h:p.horizon_min}));
+  const now = ts.now ? Date.parse(ts.now) : Date.now();
+  const all = raw.concat(pred).filter(p=>isFinite(p.t)).sort((a,b)=>a.t-b.t);
+  const H=220, TOP=12, BOT=24, HOURW=74, YMIN=40, YMAX=260;
+  const tMin = Math.min(all[0]?.t ?? now, now - 3*3.6e6);
+  const tMax = Math.max(all[all.length-1]?.t ?? now, now + 3.6e6);
+  const W = Math.max(680, (tMax-tMin)/3.6e6*HOURW);
+  const sx = t => 10 + (t-tMin)/(tMax-tMin) * (W-26);
+  const sy = v => TOP + (1-(Math.min(Math.max(v,YMIN),YMAX)-YMIN)/(YMAX-YMIN)) * (H-TOP-BOT);
+  const smooth = pts => { if(!pts.length) return ''; const p = pts.map(q=>[sx(q.t),sy(q.v)]);
+    if(p.length<3) return p.map(([x,y],i)=>(i?'L':'M')+x.toFixed(1)+','+y.toFixed(1)).join(' ');
+    let d='M'+p[0][0].toFixed(1)+','+p[0][1].toFixed(1);
+    for(let i=0;i<p.length-1;i++){ const a=p[Math.max(0,i-1)],b=p[i],c=p[i+1],e=p[Math.min(p.length-1,i+2)];
+      d+=` C${(b[0]+(c[0]-a[0])/6).toFixed(1)},${(b[1]+(c[1]-a[1])/6).toFixed(1)} ${(c[0]-(e[0]-b[0])/6).toFixed(1)},${(c[1]-(e[1]-b[1])/6).toFixed(1)} ${c[0].toFixed(1)},${c[1].toFixed(1)}`; }
+    return d; };
+  const hrs=[]; for(let t=Math.ceil(tMin/3.6e6)*3.6e6; t<=tMax; t+=3.6e6) hrs.push(t);
+  const fmt = t => { const h=new Date(t).getHours(); return `${h%12||12} ${h>=12?'PM':'AM'}`; };
+  const gAt = t => { const s=all; if(!s.length) return YMIN;
+    if(t<=s[0].t) return s[0].v; if(t>=s[s.length-1].t) return s[s.length-1].v;
+    for(let i=1;i<s.length;i++) if(s[i].t>=t){const a=s[i-1],b=s[i];return a.v+(t-a.t)/((b.t-a.t)||1)*(b.v-a.v);} return s[s.length-1].v; };
+  const foods = state.foods.map(f=>Date.parse(f.logged_at)).filter(t=>t>=tMin&&t<=tMax);
+  const sel = pred.find(p=>p.h===state.horizon);
+  let s = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+  for(const v of [40,80,120,160,200,240]) s+=`<line x1="0" x2="${W}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--border)" stroke-opacity=".5"/><text x="4" y="${sy(v)-3}" font-size="9" fill="var(--muted)">${v}</text>`;
+  s += `<rect x="0" y="${sy(180)}" width="${W}" height="${sy(70)-sy(180)}" fill="var(--band)"/>`;
+  for(const t of hrs) s+=`<line x1="${sx(t)}" x2="${sx(t)}" y1="${TOP}" y2="${H-BOT}" stroke="var(--border)" stroke-opacity=".4"/><text x="${sx(t)}" y="${H-7}" font-size="9" fill="var(--muted)" text-anchor="middle">${fmt(t)}</text>`;
+  s += `<line x1="${sx(now)}" x2="${sx(now)}" y1="${TOP}" y2="${H-BOT}" stroke="var(--accent)" stroke-dasharray="2 3"/><text x="${sx(now)}" y="${TOP+8}" font-size="9" fill="var(--accent)" text-anchor="middle">now</text>`;
+  s += `<path d="${smooth(raw)}" stroke="var(--text)" stroke-width="2" fill="none"/>`;
+  s += `<path d="${smooth(pred)}" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="5 4" fill="none"/>`;
+  for(const t of foods){ const x=sx(t), y=sy(gAt(t)); s+=`<circle cx="${x}" cy="${y}" r="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/><text x="${x}" y="${y+4}" font-size="11" text-anchor="middle">🍴</text>`; }
+  if (sel){ const x=sx(sel.t), y=sy(sel.v);
+    s+=`<line x1="${x}" x2="${x}" y1="${TOP}" y2="${H-BOT}" stroke="var(--accent)" stroke-opacity=".3"/><rect x="${x-19}" y="${y>40?y-30:y+10}" width="38" height="20" rx="10" fill="var(--accent)"/><text x="${x}" y="${(y>40?y-30:y+10)+14}" font-size="11" font-weight="700" fill="var(--on-accent)" text-anchor="middle">${Math.round(sel.v)}</text><circle cx="${x}" cy="${y}" r="6" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`; }
+  s += '</svg>';
+  return `<div class="scroll-x" id="chartScroll">${s}</div>`;
+}
+
+/* ── views ────────────────────────────────────────────────────────────────── */
+function authView(){
+  return `<div class="auth card">
+    <h1 style="margin-bottom:6px">GlucoSense AI</h1>
+    <p class="muted" style="margin-bottom:18px">Your glucose, forecasts and Doctor Gluco — on the web.</p>
+    <div class="err" id="aerr"></div>
+    <input id="aemail" type="email" placeholder="Email" autocomplete="username">
+    <input id="apw" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="row"><button class="grow" onclick="doLogin()">Log in</button>
+    <button class="ghost grow" onclick="doRegister()">Register</button></div>
+  </div>`;
+}
+window.doLogin = async () => { try { await login($('#aemail').value.trim(), $('#apw').value); boot(); }
+  catch(e){ $('#aerr').textContent = e.message; } };
+window.doRegister = async () => { try { await registerUser($('#aemail').value.trim(), $('#apw').value); boot(); }
+  catch(e){ $('#aerr').textContent = e.message; } };
+
+function statusLine(){
+  const ts = state.ts||{}; const st = ts.status; const w = ts.watch;
+  if (st==='ready') return '';
+  if (st==='no_watch' && w) return `<div class="card"><b>⌚ Watch data needed</b><p class="muted">Your CGM is streaming, but forecasts also read your heart rate — open the phone app and sync your watch.</p></div>`;
+  if (st==='collecting') return `<div class="card"><b>📈 Learning your patterns</b><p class="muted">Day ${Math.floor(ts.days_have??0)} of ${Math.round(ts.days_need??8)} — your personal forecast turns on automatically.</p></div>`;
+  if (st==='no_source') {
+    if ((ts.predicted||[]).length) return '';
+    return `<div class="card"><b>🩸 No CGM connected</b><p class="muted">Connect a sensor (or your watch for Virtual CGM estimates) in the phone app to see live data here.</p></div>`;
+  }
+  return '';
+}
+
+function homeView(){
+  const ts = state.ts||{}; const raw = ts.raw||[]; const pred = (ts.predicted||[]).filter(p=>p.horizon_min!=null);
+  const cur = raw.length ? raw[raw.length-1].mgdl : null;
+  const sel = pred.find(p=>p.horizon_min===state.horizon) || pred[0];
+  const name = state.profile?.first_name || '';
+  const virtual = ts.status==='no_source' && pred.length;
+  const tone = v => v<70?'warn':(v>180?'bad':'good');
+  const label = v => v<70?'Low':(v>180?'High':'In range');
+  let head = '';
+  if (cur!=null) head = `<div class="row"><span class="big">${Math.round(cur)}</span><span class="muted">mg/dL now</span><span class="grow"></span><span class="pill ${tone(cur)}">${label(cur)}</span></div>`;
+  else if (virtual && sel) head = `<div class="row"><span class="big">~${Math.round(sel.mgdl)}</span><span class="muted">mg/dL est. in ${sel.horizon_min} min</span><span class="grow"></span><span class="pill ${tone(sel.mgdl)}">${label(sel.mgdl)}</span></div>`;
+  const chips = pred.length ? `<div class="chips"><span class="muted">View</span>` + [30,60,90,120].map(h=>
+    `<span class="chip ${state.horizon===h?'on':''}" onclick="setHorizon(${h})">+${h}m</span>`).join('') + `</div>` : '';
+  const selNote = sel && cur!=null ? `<p class="muted" style="margin-top:8px">Your glucose may reach ~<b style="color:var(--accent)">${Math.round(sel.mgdl)} mg/dL</b> in ${sel.horizon_min} min</p>` : '';
+  const recs = (state.recs||[]).map(r=>`<div class="card"><b>${r.title}</b><p class="muted" style="margin-top:4px">${r.body}</p></div>`).join('')
+             || `<div class="card muted">No suggestions right now — log a meal or sync data and Doctor Gluco will chime in.</div>`;
+  const cgmTxt = describeCgm(state.cgm);
+  return `<h1>Hi ${name||'there'} 👋</h1><p class="muted">${virtual?'Virtual CGM estimates from your watch.':'Your personalized glucose overview.'}</p>
+    <div class="card" style="margin-top:14px">${head}${chartSVG()}${chips}${selNote}</div>
+    ${statusLine()}
+    <h2>Doctor Gluco's suggestions</h2>${recs}
+    <h2>Log</h2>
+    <div class="card"><div class="row">
+      <input id="foodDesc" placeholder="e.g. 2 rotis with dal" style="margin:0">
+      <select id="foodMeal" style="margin:0; width:130px"><option>breakfast</option><option selected>lunch</option><option>dinner</option><option>snack</option></select>
+      <button onclick="logFood()">🍽 Log</button></div>
+      <p class="muted" style="margin-top:8px">Logged items feed your forecast — you can also just tell Doctor Gluco in chat.</p></div>
+    <h2>Connections</h2>
+    <div class="card">
+      <div class="row"><span class="dot ${cgmTxt.connected?'on':''}"></span><span class="grow">CGM (Libre / Dexcom)</span><span class="muted">${cgmTxt.text}</span></div>
+      <div class="row" style="margin-top:10px"><span class="dot"></span><span class="grow">Watch (Health Connect)</span><span class="muted">syncs via the phone app</span></div>
+    </div>`;
+}
+window.setHorizon = h => { state.horizon = h; render(); };
+window.logFood = async () => {
+  const d = $('#foodDesc').value.trim(); if(!d) return;
+  try { await api('/food/log', {method:'POST', body: JSON.stringify({meal_type:$('#foodMeal').value, description:d})});
+    $('#foodDesc').value='';
+    api('/coach/recommendations/refresh',{method:'POST'}).catch(()=>{});
+    await loadAll(); render(); } catch(e){ alert('Could not log: '+e.message); }
+};
+function describeCgm(s){
+  if (!s) return {connected:false, text:'set up in the phone app'};
+  if (s.junction_fresh) return {connected:true, text:'Streaming · Junction'};
+  if (s.xdrip_fresh) return {connected:true, text:'Streaming · xDRIP+'};
+  if (s.last_junction_ok_at || s.last_xdrip_at) return {connected:false, text:'linked · waiting for readings'};
+  return {connected:false, text:'set up in the phone app'};
+}
+
+function chatView(){
+  const msgs = state.chat.length ? state.chat : [{role:'assistant', content:`Hi${state.profile?.first_name?' '+state.profile.first_name:''}, I'm Doctor Gluco 👋 Ask me anything about your glucose, food or vitals — or just tell me what you ate and I'll log it.`}];
+  return `<h1>Doctor Gluco</h1><p class="muted">Your glucose, food & vitals — ask or log anything</p>
+    <div id="chatlog" style="margin-top:14px; padding-bottom:120px">
+      ${msgs.map(m=>`<div class="msg ${m.role==='user'?'me':'doc'}">${esc(m.content)}</div>`).join('')}
+      ${state.sending?'<div class="msg doc muted" id="typing">…</div>':''}
+    </div>
+    <div class="chatbox"><div class="inner">
+      <input id="chatIn" placeholder="Message Doctor Gluco…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button onclick="sendChat()" ${state.sending?'disabled':''}>➤</button>
+    </div></div>`;
+}
+const esc = s => s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+window.sendChat = async () => {
+  const inp = $('#chatIn'); const text = inp.value.trim(); if(!text || state.sending) return;
+  inp.value=''; state.chat.push({role:'user', content:text}); state.sending=true; render();
+  const idx = state.chat.push({role:'assistant', content:''}) - 1;
+  try {
+    const r = await fetch(API+'/coach/chat/stream', {method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+store.token},
+      body: JSON.stringify({message:text})});
+    if (!r.ok || !r.body) throw new Error('stream failed');
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf='';
+    while (true){ const {done, value} = await reader.read(); if (done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split('\n'); buf = lines.pop() ?? '';
+      for (const line of lines){ if (!line.startsWith('data: ')) continue;
+        try { const ev = JSON.parse(line.slice(6));
+          if (ev.delta) { state.chat[idx].content += ev.delta; renderChatLog(); }
+          if (ev.done && ev.reply) state.chat[idx].content = ev.reply;
+        } catch {} } }
+  } catch { try { const d = await api('/coach/chat', {method:'POST', body: JSON.stringify({message:text})});
+      state.chat[idx].content = d.reply; } catch { state.chat[idx].content = 'Sorry — I could not reach Doctor Gluco just now.'; } }
+  state.sending=false; render();
+  api('/coach/recommendations').then(r=>state.recs=r).catch(()=>{});
+};
+function renderChatLog(){ // lightweight partial re-render while streaming
+  const el = $('#chatlog'); if (!el) return;
+  el.innerHTML = state.chat.map(m=>`<div class="msg ${m.role==='user'?'me':'doc'}">${esc(m.content)}</div>`).join('');
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function profileView(){
+  const p = state.profile||{}; const cgmTxt = describeCgm(state.cgm);
+  const dash = v => (v==null||v==='')?'—':v;
+  return `<h1>Profile</h1><p class="muted">${p.email||''}</p>
+    <h2>Details</h2><div class="card">
+      <div class="kv"><b>Name</b><span>${dash(p.name)}</span></div>
+      <div class="kv"><b>Age</b><span>${dash(p.age)}</span></div>
+      <div class="kv"><b>Gender</b><span>${dash(p.gender)}</span></div>
+      <div class="kv"><b>Height</b><span>${p.height_cm?p.height_cm+' cm':'—'}</span></div>
+      <div class="kv"><b>Weight</b><span>${p.weight_kg?p.weight_kg+' kg':'—'}</span></div>
+      <div class="kv"><b>BMI</b><span>${dash(p.bmi)}</span></div>
+      <div class="kv"><b>Blood pressure</b><span>${p.bp_systolic?p.bp_systolic+' / '+p.bp_diastolic:'—'}</span></div>
+      <div class="kv"><b>HbA1c</b><span>${p.hba1c?p.hba1c+'%':'—'}</span></div>
+      <div class="kv"><b>Diabetes</b><span>${dash(p.diabetes_type)}</span></div>
+      <div class="kv"><b>Medications</b><span>${dash(p.medications)}</span></div>
+    </div>
+    <p class="muted">Edit details in the phone app — this view stays in sync automatically.</p>
+    <h2>Connections</h2><div class="card">
+      <div class="row"><span class="dot ${cgmTxt.connected?'on':''}"></span><span class="grow">CGM (Libre / Dexcom)</span><span class="muted">${cgmTxt.text}</span></div>
+      <div class="row" style="margin-top:10px"><span class="dot"></span><span class="grow">Watch (Health Connect)</span><span class="muted">syncs via the phone app</span></div>
+    </div>
+    <h2>Account</h2><div class="card">
+      <button class="ghost" style="width:100%" onclick="signOut()">Sign out</button>
+    </div>`;
+}
+window.signOut = () => { store.token=null; state.profile=null; render(); };
+
+/* ── shell ────────────────────────────────────────────────────────────────── */
+function shell(inner){
+  const t = state.page;
+  return inner + `<nav class="tabs">
+    <a href="#home" class="${t==='home'?'on':''}"><span>🏠</span>Home</a>
+    <a href="#chat" class="${t==='chat'?'on':''}"><span>💬</span>Chat</a>
+    <a href="#profile" class="${t==='profile'?'on':''}"><span>👤</span>Profile</a></nav>`;
+}
+function render(){
+  const root = $('#root');
+  if (!store.token){ root.innerHTML = authView(); return; }
+  const v = state.page==='chat' ? chatView() : state.page==='profile' ? profileView() : homeView();
+  root.innerHTML = shell(v);
+  if (state.page==='home'){ const sc=$('#chartScroll'); if(sc) sc.scrollLeft = sc.scrollWidth*0.55; }
+  if (state.page==='chat') window.scrollTo(0, document.body.scrollHeight);
+}
+window.addEventListener('hashchange', async () => {
+  state.page = (location.hash||'#home').slice(1);
+  if (state.page==='chat' && !state.chat.length) await loadChat();
+  render();
+});
+async function boot(){
+  if (!store.token){ render(); return; }
+  state.page = (location.hash||'#home').slice(1);
+  try { await loadAll(); if (state.page==='chat') await loadChat(); } catch {}
+  render();
+  setInterval(async () => {          // realtime: same 60s cadence as the app
+    if (!store.token || state.page!=='home') return;
+    try { await loadAll(); render(); } catch {}
+  }, 60_000);
+}
+boot();
+</script>
+</body>
+</html>

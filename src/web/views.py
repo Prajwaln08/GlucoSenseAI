@@ -56,18 +56,27 @@ def _page(request: Request, name: str, **ctx):
     return templates.TemplateResponse(name, {"request": request, **ctx})
 
 
-# ── root / auth pages ─────────────────────────────────────────────────────────
+# ── the modern web app (single page, consumes the same JSON API as mobile) ────
+
+_APP_HTML = os.path.join(os.path.dirname(__file__), "templates", "app.html")
+
 
 @router.get("/", response_class=HTMLResponse)
-def root(user: User = Depends(get_optional_user)):
-    return RedirectResponse("/dashboard" if user else "/login", status_code=303)
+def root():
+    return RedirectResponse("/app", status_code=303)
 
+
+@router.get("/app", response_class=HTMLResponse)
+def spa():
+    from fastapi.responses import FileResponse
+    return FileResponse(_APP_HTML, headers={"Cache-Control": "no-store"})
+
+
+# ── legacy server-rendered pages (superseded by /app; kept for reference) ─────
 
 @router.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, user: User = Depends(get_optional_user)):
-    if user:
-        return RedirectResponse("/dashboard", status_code=303)
-    return _page(request, "login.html")
+def login_page():
+    return RedirectResponse("/app", status_code=303)
 
 
 @router.post("/login", response_class=HTMLResponse)
