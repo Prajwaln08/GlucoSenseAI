@@ -109,18 +109,42 @@ winning family per horizon at runtime.
 
 ## 4. Model Performance
 
-Population tier, held-out test on CGMacros (`while_on_cgm`):
+Population tier, CGMacros `while_on_cgm` (45 subjects, ~12k samples; validation split —
+this tier keeps no held-out test since the live CGM stream is the real test).
 
-| Horizon | RMSE (mg/dL) | MAE (mg/dL) | Clarke zone A |
-|---:|---:|---:|---:|
-| 30 min | **11.40** | 7.84 | 95.2 % |
-| 60 min | 18.44 | 12.60 | 84.8 % |
-| 90 min | 21.76 | 14.86 | 79.7 % |
-| 120 min | 23.58 | 16.19 | 77.0 % |
+### 4.1 Accuracy vs. a naive baseline
+Glucose is highly autocorrelated, so the honest question is *"better than predicting the
+last reading?"* Every model is reported against a **persistence** baseline (`ŷ(t+h)=y(t)`):
 
-Personal models are trained for 42 subjects (while-on-CGM) and 22 subjects (post-CGM)
-across all four horizons. See §11 for the evaluation work in progress (baselines, MARD,
-uncertainty quantification).
+| Horizon | Persistence RMSE | Best model RMSE | Improvement | MARD | Clarke A |
+|---:|---:|---:|---:|---:|---:|
+| 30 min | 16.38 | **11.36** (catboost) | **31 %** | 7.3 % | 95.2 % |
+| 60 min | 26.40 | **18.35** (catboost) | **31 %** | 11.6 % | 84.5 % |
+| 90 min | 32.9 | **21.72** (catboost) | **34 %** | 12.4 % | 79.7 % |
+| 120 min | ~36 | **23.58** | ~30 % | 16.2 % | 77.0 % |
+
+Models beat persistence substantially at every horizon; a linear-trend baseline does *worse*
+than persistence (it amplifies sensor noise) — reported as an honest negative result.
+
+### 4.2 Clinical finding — RMSE ≠ clinical utility
+Treating each forecast as a **hypoglycemia (<70 mg/dL) detector** surfaces what RMSE hides:
+
+| Horizon | Persistence hypo-sensitivity | Best-RMSE model | 
+|---:|---:|---:|
+| 30 min | 0.78 | ~0.75 (comparable) |
+| 120 min | **0.63** | **0.43–0.50** (worse) |
+
+At long horizons the lowest-RMSE models catch **fewer** dangerous lows than a naive
+baseline — they minimize squared error by regressing toward the mean, which blinds them to
+the extremes that matter most. Segmented error confirms it: severe-hypo MARD (15.8 %) is
+~2.4× the in-range MARD (6.6 %). **Takeaway:** RMSE is the wrong objective for the clinical
+goal; the intended fix is a hypo-weighted / asymmetric loss (§11).
+
+*Reproducible via `python scripts/evaluate_baselines.py` — an offline harness that reuses
+the exact training pipeline and split, isolated from the serving path.*
+
+Personal models are trained for 42 subjects (while-on-CGM) and 22 (post-CGM) across all four
+horizons.
 
 ---
 
@@ -216,10 +240,13 @@ The API serves docs at `http://localhost:8000/docs` and the web app at
 
 ## 11. Roadmap
 
-**Evaluation rigor (in progress):** naive-baseline reporting (persistence / trend),
-MARD + full error-grid distributions, hypo/hyper event-detection metrics, conformal
-prediction intervals, leakage-audited subject-wise CV, segmented error analysis,
-paired statistical tests for personalization lift, drift monitoring.
+**Evaluation rigor — done ✅:** persistence / linear-trend baselines, MARD + full Clarke
+error-grid, hypo/hyper event-detection (sensitivity, false-alarm, lead time), segmented
+error by glucose band (§4).
+
+**Evaluation rigor — next:** hypo-weighted / asymmetric loss to fix the sensitivity gap
+found in §4.2; conformal prediction intervals; leakage-audited subject-wise (LOSO) CV;
+paired statistical tests for personalization lift; drift monitoring.
 
 **Platform:** model hosting off-device, Play Store release (internal → closed → production),
 Junction production connector (currently sandbox-only), iOS.
