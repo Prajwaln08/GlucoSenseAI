@@ -83,8 +83,11 @@ export default function Chat() {
           <Body style={{ fontWeight: '700', fontSize: 18 }}>Doctor Gluco</Body>
           <Muted>Your glucose, food & vitals — ask or log anything</Muted>
         </View>
+        {/* Android resizes the window for the keyboard natively (softwareKeyboardLayoutMode
+            "resize") — adding KeyboardAvoidingView's "height" behavior on top DOUBLE-compensates
+            and reserves a phantom keyboard-sized gap. iOS still needs "padding". */}
         <KeyboardAvoidingView style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + 49 : 0}>
           <FlatList
             ref={listRef}
