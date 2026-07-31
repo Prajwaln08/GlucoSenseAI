@@ -20,6 +20,17 @@ import numpy as np
 HYPO = 70.0     # mg/dL — below this is hypoglycemia
 HYPER = 180.0   # mg/dL — above this is hyperglycemia
 
+
+def _err_stats(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    """RMSE / MAE / MARD / bias for a subset (shared by segmentation & calibration)."""
+    err = y_pred - y_true
+    return {
+        "rmse": round(float(np.sqrt(np.mean(err ** 2))), 3),
+        "mae": round(float(np.mean(np.abs(err))), 3),
+        "mard": round(float(np.mean(np.abs(err) / np.maximum(y_true, 1e-6)) * 100), 3),
+        "bias": round(float(np.mean(err)), 3),   # signed: + = over-predicts
+    }
+
 # Clinical glucose bands for segmented error (mg/dL).
 GLUCOSE_BANDS = [
     ("severe_hypo", -np.inf, 54.0),
@@ -163,6 +174,65 @@ def conditional_coverage(y_true: np.ndarray, y_pred: np.ndarray, q: float) -> di
         out[name] = {"n": int(m.sum()),
                      "coverage": round(float(np.mean(covered[m])), 4) if m.any() else None}
     return out
+
+
+# ── Calibration (regression reliability) ──────────────────────────────────────
+
+def calibration_by_decile(y_true: np.ndarray, y_pred: np.ndarray, n_bins: int = 10) -> dict:
+    """Reliability of a regression forecast: bin by PREDICTED value, compare mean
+    predicted vs mean observed per bin. A well-calibrated model sits on the diagonal
+    (mean_pred ≈ mean_obs). Returns per-bin rows + an overall expected-calibration-error.
+    """
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    order = np.argsort(y_pred)
+    bins = np.array_split(order, n_bins)
+    rows, ece_num = [], 0.0
+    for i, idx in enumerate(bins):
+        if len(idx) == 0:
+            continue
+        mp, mo = float(y_pred[idx].mean()), float(y_true[idx].mean())
+        rows.append({"bin": i + 1, "n": len(idx), "mean_pred": round(mp, 2),
+                     "mean_obs": round(mo, 2), "bias": round(mp - mo, 2)})
+        ece_num += len(idx) * abs(mp - mo)
+    return {"bins": rows, "ece_mgdl": round(ece_num / max(len(y_true), 1), 3)}
+
+
+# ── Named-mask segmentation (time-of-day, post-meal, …) ───────────────────────
+
+def segmented_by_mask(y_true: np.ndarray, y_pred: np.ndarray,
+                      masks: dict[str, np.ndarray]) -> dict:
+    """Error stats within each named boolean mask (e.g. night/day, fasting/post-meal)."""
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    out: dict = {}
+    for name, m in masks.items():
+        m = np.asarray(m, dtype=bool).ravel()
+        out[name] = {"n": int(m.sum()), **(_err_stats(y_true[m], y_pred[m]) if m.any()
+                     else {"rmse": None, "mae": None, "mard": None, "bias": None})}
+    return out
+
+
+# ── Population Stability Index (covariate / label drift) ──────────────────────
+
+def psi(expected: np.ndarray, actual: np.ndarray, n_bins: int = 10) -> float:
+    """Population Stability Index between a reference (expected) and live (actual)
+    distribution. Bin edges from the reference deciles. Rule of thumb:
+    <0.1 no shift · 0.1–0.25 moderate · >0.25 significant drift.
+    """
+    expected = np.asarray(expected, dtype=float)
+    actual = np.asarray(actual, dtype=float)
+    expected = expected[np.isfinite(expected)]
+    actual = actual[np.isfinite(actual)]
+    if len(expected) < n_bins or len(actual) == 0:
+        return float("nan")
+    edges = np.quantile(expected, np.linspace(0, 1, n_bins + 1))
+    edges[0], edges[-1] = -np.inf, np.inf
+    e_frac = np.histogram(expected, edges)[0] / len(expected)
+    a_frac = np.histogram(actual, edges)[0] / len(actual)
+    eps = 1e-6
+    e_frac, a_frac = np.maximum(e_frac, eps), np.maximum(a_frac, eps)
+    return float(np.sum((a_frac - e_frac) * np.log(a_frac / e_frac)))
 
 
 # ── Segmented error by glucose range ──────────────────────────────────────────
