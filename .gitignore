@@ -31,6 +31,7 @@ data/processed/
 *.md
 # Markdown policy: keep ONLY the root README on GitHub; internal docs stay local-only.
 !/README.md
+!/docs/validation.md
 
 # ── Models — NOTHING under models/ is committed (code only) ──────────────
 # All model artifacts AND the registry are generated locally and stay local
