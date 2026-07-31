@@ -122,6 +122,49 @@ def event_detection_metrics(y_true: np.ndarray, y_pred: np.ndarray,
     }
 
 
+# ── Conformal prediction intervals (split-conformal) ──────────────────────────
+
+def conformal_quantile(cal_residuals: np.ndarray, alpha: float = 0.1) -> float:
+    """Split-conformal interval half-width q̂ from calibration ABSOLUTE residuals.
+
+    Uses the finite-sample-corrected rank ⌈(n+1)(1-α)⌉/n so the resulting interval
+    [ŷ-q̂, ŷ+q̂] has guaranteed marginal coverage ≥ 1-α on exchangeable data.
+    """
+    r = np.asarray(cal_residuals, dtype=float)
+    r = r[np.isfinite(r)]
+    n = len(r)
+    if n == 0:
+        return float("nan")
+    level = min(1.0, np.ceil((n + 1) * (1 - alpha)) / n)
+    return float(np.quantile(r, level, method="higher"))
+
+
+def interval_metrics(y_true: np.ndarray, y_pred: np.ndarray, q: float) -> dict:
+    """Empirical coverage + interval width for a symmetric ±q̂ conformal interval."""
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    covered = np.abs(y_true - y_pred) <= q
+    return {
+        "coverage": round(float(np.mean(covered)), 4),
+        "mean_width_mgdl": round(float(2 * q), 2),
+        "n": int(len(y_true)),
+    }
+
+
+def conditional_coverage(y_true: np.ndarray, y_pred: np.ndarray, q: float) -> dict:
+    """Coverage WITHIN each clinical glucose band — split-conformal guarantees
+    *marginal* coverage but often under-covers the rare hypo tail; this exposes it."""
+    y_true = np.asarray(y_true, dtype=float).ravel()
+    y_pred = np.asarray(y_pred, dtype=float).ravel()
+    covered = np.abs(y_true - y_pred) <= q
+    out: dict = {}
+    for name, lo, hi in GLUCOSE_BANDS:
+        m = (y_true >= lo) & (y_true < hi)
+        out[name] = {"n": int(m.sum()),
+                     "coverage": round(float(np.mean(covered[m])), 4) if m.any() else None}
+    return out
+
+
 # ── Segmented error by glucose range ──────────────────────────────────────────
 
 def segmented_error(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
