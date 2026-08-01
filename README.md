@@ -40,7 +40,7 @@ LLM health assistant on top.
 
 ## 1. Try It
 
-### ▶️ [Watch the app walkthrough (1:53)](https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing)
+### ▶️ [Watch the app walkthrough ](https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing)
 A full demo — account creation, onboarding, the live forecast graph, Doctor Gluco chat, and
 both model journeys (Personalized CGM vs. watch-only Virtual CGM).
 
