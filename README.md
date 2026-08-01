@@ -47,7 +47,7 @@ both model journeys (Personalized CGM vs. watch-only Virtual CGM).
 | What | Link |
 |---|---|
 | 🎬 **App walkthrough video** (the real app UI) | https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing |
-| 📱 **Android app — download the APK** (real app; sign in with the demo accounts below) | `<!-- APK_LINK -->` *(building — permanent GitHub-release link coming)* |
+| 📱 **Android app — download the APK** (real app; sign in with the demo accounts below) | **[⬇ GlucoSenseAI-v1.0.apk](https://github.com/Prajwaln08/GlucoSenseAI/releases/download/app-v1.0/GlucoSenseAI-v1.0.apk)** (107 MB) |
 | 🌐 **Web app** — *lightweight browser version, simplified UI* (same data & API) | https://glucosense-api-dj43.onrender.com |
 | 🔌 **REST API docs** (OpenAPI) | https://glucosense-api-dj43.onrender.com/docs |
 
