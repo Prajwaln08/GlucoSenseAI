@@ -1,0 +1,307 @@
+<title>GlucoSense AI — Project One-Pager</title>
+<style>
+  :root{
+    --ground:#F6F8FA; --surface:#FFFFFF; --surface-2:#FCFDFE;
+    --ink:#16202B; --ink-soft:#42505E; --muted:#748493;
+    --line:#E4EAF0; --line-strong:#D3DCE4;
+    --accent:#0C7E90; --accent-deep:#075A68; --accent-tint:rgba(12,126,144,.10);
+    --range:rgba(23,150,120,.13); --range-line:rgba(23,150,120,.34);
+    --caution:#B65E1E; --caution-tint:rgba(182,94,30,.10); --caution-line:rgba(182,94,30,.30);
+    --shadow:0 1px 2px rgba(16,32,45,.04),0 8px 30px rgba(16,32,45,.06);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0C131A; --surface:#121D26; --surface-2:#16222C;
+      --ink:#E9EFF4; --ink-soft:#AFBECA; --muted:#728594;
+      --line:#22323E; --line-strong:#2C3E4B;
+      --accent:#2FB6CB; --accent-deep:#4FC9DC; --accent-tint:rgba(47,182,203,.13);
+      --range:rgba(45,180,140,.14); --range-line:rgba(45,180,140,.40);
+      --caution:#E29A5C; --caution-tint:rgba(226,154,92,.12); --caution-line:rgba(226,154,92,.34);
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 34px rgba(0,0,0,.34);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#F6F8FA; --surface:#FFFFFF; --surface-2:#FCFDFE;
+    --ink:#16202B; --ink-soft:#42505E; --muted:#748493;
+    --line:#E4EAF0; --line-strong:#D3DCE4;
+    --accent:#0C7E90; --accent-deep:#075A68; --accent-tint:rgba(12,126,144,.10);
+    --range:rgba(23,150,120,.13); --range-line:rgba(23,150,120,.34);
+    --caution:#B65E1E; --caution-tint:rgba(182,94,30,.10); --caution-line:rgba(182,94,30,.30);
+    --shadow:0 1px 2px rgba(16,32,45,.04),0 8px 30px rgba(16,32,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0C131A; --surface:#121D26; --surface-2:#16222C;
+    --ink:#E9EFF4; --ink-soft:#AFBECA; --muted:#728594;
+    --line:#22323E; --line-strong:#2C3E4B;
+    --accent:#2FB6CB; --accent-deep:#4FC9DC; --accent-tint:rgba(47,182,203,.13);
+    --range:rgba(45,180,140,.14); --range-line:rgba(45,180,140,.40);
+    --caution:#E29A5C; --caution-tint:rgba(226,154,92,.12); --caution-line:rgba(226,154,92,.34);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 34px rgba(0,0,0,.34);
+  }
+
+  *{box-sizing:border-box;}
+  body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;-webkit-font-smoothing:antialiased;margin:0;}
+  .page{max-width:880px;margin:0 auto;padding:40px 28px 64px;}
+
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);font-weight:600;}
+  h1{font-size:clamp(34px,6vw,50px);line-height:1.02;letter-spacing:-.02em;
+    font-weight:800;margin:.28em 0 .12em;text-wrap:balance;}
+  .lede{font-size:clamp(16px,2.2vw,19px);color:var(--ink-soft);max-width:60ch;
+    margin:0;text-wrap:pretty;}
+
+  /* ── hero glucose trace ── */
+  .hero-chart{margin:26px 0 6px;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;padding:16px 16px 10px;box-shadow:var(--shadow);overflow:hidden;}
+  .hero-chart svg{display:block;width:100%;height:auto;}
+  .chart-cap{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;
+    align-items:center;margin-top:8px;font-family:var(--mono);font-size:11px;
+    color:var(--muted);letter-spacing:.02em;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .swatch{width:16px;height:0;border-top:2.5px solid var(--accent);display:inline-block;}
+  .swatch.dash{border-top-style:dashed;}
+  .swatch.band{height:11px;border:0;border-radius:2px;background:var(--range);
+    border:1px solid var(--range-line);}
+
+  /* ── link chips ── */
+  .links{display:flex;flex-wrap:wrap;gap:9px;margin:20px 0 4px;}
+  .links a{font-family:var(--mono);font-size:12.5px;text-decoration:none;
+    color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);
+    padding:7px 13px;border-radius:8px;transition:border-color .15s,color .15s,background .15s;}
+  .links a:hover{border-color:var(--accent);color:var(--accent);}
+  .links a b{color:var(--accent);font-weight:600;}
+  .links a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  hr.rule{border:0;border-top:1px solid var(--line);margin:34px 0;}
+
+  section{margin-top:34px;}
+  .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 12px;
+    display:flex;align-items:center;gap:10px;}
+  .kicker::after{content:"";flex:1;height:1px;background:var(--line);}
+  h2{font-size:22px;letter-spacing:-.01em;font-weight:750;margin:0 0 10px;line-height:1.2;}
+  p{margin:0 0 12px;color:var(--ink-soft);}
+  p strong,li strong{color:var(--ink);font-weight:650;}
+  .lead-q{font-size:18px;color:var(--ink);max-width:62ch;font-weight:450;}
+  .lead-q em{color:var(--accent);font-style:normal;font-weight:650;}
+
+  /* ── pipeline spine ── */
+  .spine{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:6px 0 4px;}
+  .spine .node{flex:1 1 120px;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;padding:11px 13px;position:relative;}
+  .spine .node .n{font-family:var(--mono);font-size:10.5px;color:var(--accent);
+    letter-spacing:.08em;text-transform:uppercase;}
+  .spine .node .t{font-size:13.5px;font-weight:650;color:var(--ink);margin-top:2px;line-height:1.3;}
+  .spine .node .d{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.35;}
+
+  /* ── phase table ── */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:540px;}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);font-weight:600;background:var(--surface-2);}
+  tbody tr:last-child td{border-bottom:0;}
+  td .ph{font-weight:700;color:var(--ink);}
+  .tier{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;
+    background:var(--accent-tint);color:var(--accent-deep);white-space:nowrap;}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);}
+
+  /* ── metric grid ── */
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .metric{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:16px 15px;box-shadow:var(--shadow);}
+  .metric .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600;
+    font-size:27px;line-height:1;color:var(--accent-deep);letter-spacing:-.01em;}
+  .metric .v small{font-size:14px;color:var(--muted);font-weight:500;}
+  .metric .k{font-size:12.5px;color:var(--ink-soft);margin-top:8px;line-height:1.35;}
+
+  /* ── honesty callout ── */
+  .callout{margin-top:16px;background:var(--caution-tint);border:1px solid var(--caution-line);
+    border-left:3px solid var(--caution);border-radius:12px;padding:16px 18px;}
+  .callout .tag{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--caution);font-weight:600;}
+  .callout h3{margin:5px 0 7px;font-size:17px;color:var(--ink);font-weight:700;letter-spacing:-.01em;}
+  .callout p{margin:0;color:var(--ink-soft);font-size:14px;}
+  .callout .nums{font-family:var(--mono);color:var(--caution);font-weight:600;}
+
+  /* ── two-col facts ── */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;}
+  .cols h4{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);font-weight:600;margin:0 0 10px;}
+  ul.tick{list-style:none;padding:0;margin:0;}
+  ul.tick li{position:relative;padding-left:20px;margin-bottom:9px;font-size:13.5px;color:var(--ink-soft);line-height:1.45;}
+  ul.tick li::before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;
+    border-radius:2px;background:var(--accent);}
+  ul.tick.plain li::before{background:var(--muted);border-radius:50%;width:5px;height:5px;left:2px;top:9px;}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .chip{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);background:var(--surface-2);
+    border:1px solid var(--line);padding:5px 10px;border-radius:7px;}
+
+  footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:14px 22px;justify-content:space-between;align-items:baseline;}
+  footer .scope{font-size:12px;color:var(--muted);max-width:52ch;line-height:1.5;}
+  footer .by{font-family:var(--mono);font-size:12px;color:var(--ink-soft);}
+  footer .by b{color:var(--accent);}
+  a{color:var(--accent);}
+
+  @media (max-width:720px){
+    .metrics{grid-template-columns:repeat(2,1fr);}
+    .cols{grid-template-columns:1fr;gap:20px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+
+  @media print{
+    :root{--ground:#fff;--surface:#fff;--surface-2:#fff;--ink:#111;--ink-soft:#333;
+      --muted:#666;--line:#ccc;--line-strong:#bbb;--shadow:none;}
+    body{background:#fff;}
+    .page{max-width:100%;padding:0 8px;}
+    .hero-chart,.metric,.tbl-wrap,.spine .node,.callout{box-shadow:none;}
+    section,.callout,.metric,.spine .node,.tbl-wrap{break-inside:avoid;}
+    .links a{border-color:#bbb;}
+    h1{font-size:38px;}
+  }
+</style>
+
+<div class="page">
+
+  <header>
+    <div class="eyebrow">Portfolio Project · Senior Data Scientist</div>
+    <h1>GlucoSense AI</h1>
+    <p class="lede">An end-to-end platform that forecasts blood glucose <strong>30–120 minutes ahead</strong> — from a continuous monitor, or from just a smartwatch and meal logs. Data engineering → feature pipeline → a tiered model system → self-critical evaluation → a deployed product.</p>
+
+    <div class="hero-chart">
+      <svg viewBox="0 0 720 150" role="img" aria-label="Glucose trace: measured history transitioning to a dashed forecast across the target range band">
+        <defs>
+          <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--accent)" stop-opacity="0.20"/>
+            <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <!-- target range band (70–180 mg/dL) -->
+        <rect x="0" y="52" width="720" height="60" fill="var(--range)"/>
+        <line x1="0" y1="52" x2="720" y2="52" stroke="var(--range-line)" stroke-width="1" stroke-dasharray="2 4"/>
+        <line x1="0" y1="112" x2="720" y2="112" stroke="var(--range-line)" stroke-width="1" stroke-dasharray="2 4"/>
+        <text x="6" y="48" font-family="var(--mono)" font-size="10" fill="var(--muted)">180</text>
+        <text x="6" y="126" font-family="var(--mono)" font-size="10" fill="var(--muted)">70</text>
+        <!-- area under measured line -->
+        <path d="M0,84 C40,74 70,58 110,64 C150,70 175,98 210,90 C250,81 275,44 320,54 C360,63 400,96 470,78 L470,150 L0,150 Z" fill="url(#fill)"/>
+        <!-- measured (solid) -->
+        <path d="M0,84 C40,74 70,58 110,64 C150,70 175,98 210,90 C250,81 275,44 320,54 C360,63 400,96 470,78" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+        <!-- forecast (dashed) -->
+        <path d="M470,78 C510,68 545,50 590,58 C635,66 675,92 720,84" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 5"/>
+        <!-- now divider -->
+        <line x1="470" y1="14" x2="470" y2="132" stroke="var(--line-strong)" stroke-width="1.5"/>
+        <circle cx="470" cy="78" r="4.5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5"/>
+        <text x="462" y="26" text-anchor="end" font-family="var(--mono)" font-size="10.5" fill="var(--ink-soft)">measured</text>
+        <text x="478" y="26" font-family="var(--mono)" font-size="10.5" fill="var(--accent)">forecast →</text>
+      </svg>
+      <div class="chart-cap">
+        <div class="legend">
+          <span><i class="swatch"></i>Measured glucose</span>
+          <span><i class="swatch dash"></i>Model forecast (2 h)</span>
+          <span><i class="swatch band"></i>Target range 70–180</span>
+        </div>
+        <div>30 / 60 / 90 / 120-min horizons</div>
+      </div>
+    </div>
+
+    <div class="links">
+      <a href="https://github.com/Prajwaln08/GlucoSenseAI"><b>↗</b> GitHub repository</a>
+      <a href="https://github.com/Prajwaln08/GlucoSenseAI/releases/download/app-v1.0/GlucoSenseAI-v1.0.apk"><b>↓</b> Android APK</a>
+      <a href="https://glucosense-api-dj43.onrender.com/docs"><b>↗</b> Live REST API</a>
+      <a href="https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view"><b>▶</b> App walkthrough</a>
+    </div>
+  </header>
+
+  <hr class="rule"/>
+
+  <section>
+    <div class="kicker">The problem</div>
+    <p class="lead-q">A continuous glucose monitor shows you the <em>present</em> — not the next two hours — and most people don't wear one at all. Can we <em>forecast</em> near-term glucose from cheap, ubiquitous signals, and honestly know <em>when the forecast is trustworthy?</em></p>
+  </section>
+
+  <section>
+    <div class="kicker">What I built</div>
+    <p>A complete, deployed data-science system — not a notebook. One shared feature pipeline builds both the training sets and the live serving frames, so the model trains and serves on identical features (<strong>no train/serve skew by construction</strong>).</p>
+    <div class="spine">
+      <div class="node"><div class="n">01 · Data</div><div class="t">2 research cohorts</div><div class="d">CGMacros (45 subj.) + Glucdict (9). Live per-minute wearable, CGM & food streams.</div></div>
+      <div class="node"><div class="n">02 · Features</div><div class="t">~94 features</div><div class="d">10-min grid, clinical range-checks, strictly backward-looking (leakage-audited).</div></div>
+      <div class="node"><div class="n">03 · Models</div><div class="t">3 phases × 2 tiers</div><div class="d">7 model families; winner selected per (phase, horizon) from a registry.</div></div>
+      <div class="node"><div class="n">04 · Evaluation</div><div class="t">Self-critical</div><div class="d">Baselines, clinical error-grid, LOSO, conformal intervals, drift.</div></div>
+      <div class="node"><div class="n">05 · Product</div><div class="t">Shipped</div><div class="d">Android app, public API, and a local-LLM health assistant.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">The model system — three phases, matched to the data a user has</div>
+    <p>Glucose forecasting isn't one model but <strong>three</strong>, each with its own target formulation. Personal vs. population isn't fixed per phase — it's decided by one question: <strong>do we have enough of <em>your own</em> glucose to train on yet?</strong></p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Phase</th><th>When it applies</th><th>Served tier</th><th>30-min RMSE / Clarke-A</th></tr></thead>
+        <tbody>
+          <tr><td><span class="ph">While-on-CGM</span></td><td>A sensor is actively streaming — predicts a <em>delta</em> off the current reading</td><td><span class="tier">Personal</span></td><td class="num">11.4 mg/dL · 95%</td></tr>
+          <tr><td><span class="ph">Post-CGM</span></td><td>Bridges the gap between two sensor sessions</td><td><span class="tier">Personal</span></td><td class="num">17.8 mg/dL · 60%</td></tr>
+          <tr><td><span class="ph">Virtual CGM</span></td><td><strong>No sensor</strong> — estimates glucose from a watch + food alone</td><td><span class="tier">Population</span></td><td class="num">22.6 mg/dL · 74%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Results — measured against naive baselines, on held-out subjects</div>
+    <div class="metrics">
+      <div class="metric"><div class="v">31–34<small>%</small></div><div class="k">Lower RMSE than a naive "predict the last reading" baseline, at every horizon</div></div>
+      <div class="metric"><div class="v">11.4<small> mg/dL</small></div><div class="k">30-min RMSE · MARD 7.3% · 95.2% in Clarke error-grid zone A</div></div>
+      <div class="metric"><div class="v">92<small>%</small></div><div class="k">Empirical coverage from split-conformal intervals at a 90% target</div></div>
+      <div class="metric"><div class="v">+15<small> pp</small></div><div class="k">Hypo-detection gain from personalization by 2 h (Wilcoxon p = 0.030)</div></div>
+    </div>
+
+    <div class="callout">
+      <div class="tag">Signature finding — reported as a headline, not a footnote</div>
+      <h3>RMSE ≠ clinical safety</h3>
+      <p>Treating each forecast as a hypoglycemia (&lt;70 mg/dL) detector reveals what error metrics hide: at 2 hours the <em>lowest-RMSE</em> models catch <span class="nums">fewer</span> dangerous lows (sensitivity <span class="nums">0.43–0.50</span>) than <span class="nums">naive persistence (0.63)</span> — they minimize squared error by regressing toward the mean, which blinds them to the extremes. Knowing <em>where a model fails</em>, and saying so, is the point of the evaluation.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Engineering & methods</div>
+    <div class="cols">
+      <div>
+        <h4>Production engineering</h4>
+        <ul class="tick">
+          <li><strong>Train ≡ serve</strong> — one feature pipeline for training and live inference; no skew.</li>
+          <li><strong>Grounded forecasts</strong> — a <em>watch gate</em> blocks any prediction without fresh heart-rate data; <strong>no fabricated values</strong>, ever.</li>
+          <li><strong>Deployed & live</strong> — Dockerized FastAPI on Render, CockroachDB Cloud with retry-aware ingest, and a self-healing cloud demo.</li>
+          <li><strong>Tested & isolated</strong> — 145 unit tests green; evaluation code never touches the serving path.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Data-science methods</h4>
+        <ul class="tick plain">
+          <li>Time-series forecasting with gradient boosting (XGBoost · LightGBM · CatBoost)</li>
+          <li>Uncertainty quantification via split-conformal prediction intervals</li>
+          <li>Decision-focused evaluation — Clarke error grid, hypo/hyper event detection</li>
+          <li>LOSO cross-validation for honest new-user cold-start (≈24% penalty)</li>
+          <li>Paired significance testing (Wilcoxon) for personalization lift</li>
+          <li>Population drift monitoring (PSI) between training and live data</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips" style="margin-top:20px">
+      <span class="chip">Python 3.10</span><span class="chip">FastAPI</span><span class="chip">scikit-learn</span>
+      <span class="chip">XGBoost / LightGBM / CatBoost</span><span class="chip">Celery + Redis</span>
+      <span class="chip">CockroachDB Cloud</span><span class="chip">Alembic</span><span class="chip">Docker / Render</span>
+      <span class="chip">React Native · Expo</span><span class="chip">Local LLM (Ollama)</span>
+    </div>
+  </section>
+
+  <footer>
+    <div class="by">Built end-to-end by <b>Prajwal Nerkar</b></div>
+    <div class="scope">Research &amp; portfolio project — distributed as a direct-install Android APK, not a Play Store or medical device. Forecasts are educational, not clinical advice.</div>
+  </footer>
+
+</div>
