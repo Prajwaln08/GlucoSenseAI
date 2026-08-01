@@ -6,11 +6,12 @@ is written via the unified integrations.ingest layer (with failover heartbeats),
 this router is thin glue. Watch data is NOT sourced here (Google Fit is the sole watch
 source) — the activity paths remain only for non-watch sources a user may link.
 
-POST /wearable/link-token        — create Junction user (if needed) + return link URL
-GET  /wearable/devices           — list connected wearable providers
-POST /wearable/sync              — pull last 7 days of glucose + activity from Junction
-GET  /wearable/activity          — fetch the patient's stored activity days
-POST /wearable/webhook           — Junction webhook receiver (HMAC-SHA256 verified)
+POST   /wearable/link-token           — create Junction user (if needed) + return link URL
+GET    /wearable/devices              — list connected wearable providers
+DELETE /wearable/connection/{provider} — disconnect one provider from Junction
+POST   /wearable/sync                 — pull last 7 days of glucose + activity from Junction
+GET    /wearable/activity             — fetch the patient's stored activity days
+POST   /wearable/webhook              — Junction webhook receiver (HMAC-SHA256 verified)
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -56,6 +58,12 @@ class DeviceProvider(BaseModel):
 class SyncResult(BaseModel):
     glucose_readings_saved: int
     activity_days_saved: int
+    message: str
+
+
+class DisconnectResult(BaseModel):
+    provider_id: str
+    remaining_providers: int
     message: str
 
 
@@ -123,6 +131,38 @@ def list_devices(current_user: User = Depends(get_current_user)) -> list[DeviceP
             connected_at=p.get("created_on", p.get("connected_at", p.get("last_sync"))),
         ))
     return result
+
+
+@router.delete("/connection/{provider}", response_model=DisconnectResult)
+def disconnect_provider(
+    provider: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DisconnectResult:
+    """Disconnect one wearable provider from this patient's Junction account."""
+    if not current_user.junction_user_id:
+        raise HTTPException(status_code=400, detail="No wearable connected.")
+
+    try:
+        client.deregister_provider(current_user.junction_user_id, provider)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider}' is not connected.")
+        raise HTTPException(status_code=502, detail="Junction could not disconnect the provider. Please try again.")
+
+    remaining = client.list_connected_sources(current_user.junction_user_id)
+    if not remaining:
+        # No sources left → drop the Junction heartbeat so failover promotes xDRIP immediately.
+        current_user.cgm_last_junction_ok_at = None
+    cgm_router.refresh_active_source(db, current_user, commit=True)
+
+    pretty = provider.replace("_", " ").title()
+    return DisconnectResult(
+        provider_id=provider,
+        remaining_providers=len(remaining),
+        message=f"{pretty} disconnected." if remaining
+        else f"{pretty} disconnected. No wearables remain linked.",
+    )
 
 
 @router.post("/sync", response_model=SyncResult)

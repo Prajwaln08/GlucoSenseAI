@@ -251,6 +251,10 @@ export const Api = {
     const { data } = await api.post('/wearable/sync');
     return data;
   },
+  async junctionDisconnect(providerId: string): Promise<{ provider_id: string; remaining_providers: number; message: string }> {
+    const { data } = await api.delete(`/wearable/connection/${encodeURIComponent(providerId)}`);
+    return data;
+  },
   async exportData() {
     const { data } = await api.get('/account/export');
     return data;

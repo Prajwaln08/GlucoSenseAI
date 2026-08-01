@@ -104,6 +104,9 @@ class JunctionClient:
     def post(self, path: str, json: dict) -> Any:
         return self._request("POST", path, json=json)
 
+    def delete(self, path: str) -> Any:
+        return self._request("DELETE", path)
+
     # ── user / link ───────────────────────────────────────────────────────────
 
     def ensure_user(self, user, db) -> str:
@@ -117,6 +120,10 @@ class JunctionClient:
 
     def get_link_token(self, junction_uid: str) -> dict:
         return self.post("/v2/link/token", {"user_id": junction_uid})
+
+    def deregister_provider(self, junction_uid: str, provider: str) -> None:
+        """Disconnect a provider (e.g. "freestyle_libre", "dexcom_v3") from a Junction user."""
+        self.delete(f"/v2/user/{junction_uid}/{provider}")
 
     def list_connected_sources(self, junction_uid: str) -> list[dict]:
         try:

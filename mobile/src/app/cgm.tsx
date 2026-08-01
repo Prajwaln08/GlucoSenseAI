@@ -14,7 +14,7 @@ export default function Cgm() {
   const qc = useQueryClient();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [jBusy, setJBusy] = useState<null | 'link' | 'sync'>(null);
+  const [jBusy, setJBusy] = useState<null | 'link' | 'sync' | 'disconnect'>(null);
   const [xdripUrl, setXdripUrl] = useState<string | null>(null);
 
   const { data: devices } = useQuery({
@@ -43,6 +43,29 @@ export default function Cgm() {
       Alert.alert('Junction', e?.response?.status === 503
         ? 'Junction isn’t configured on this server yet — xDRIP+ above works in the meantime.'
         : 'Could not start the Junction link. Please try again.');
+    } finally { setJBusy(null); }
+  }
+
+  function confirmDisconnect(providerId: string, name: string) {
+    Alert.alert(
+      'Disconnect sensor',
+      `Remove ${name} from GlucoSense? Your past readings stay, but new ones will stop streaming from this sensor.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Disconnect', style: 'destructive', onPress: () => disconnectJunction(providerId) },
+      ],
+    );
+  }
+
+  async function disconnectJunction(providerId: string) {
+    setJBusy('disconnect');
+    try {
+      const r = await Api.junctionDisconnect(providerId);
+      qc.invalidateQueries({ queryKey: ['junction-devices'] });
+      qc.invalidateQueries({ queryKey: ['cgm-status'] });
+      Alert.alert('Junction', r.message);
+    } catch (e: any) {
+      Alert.alert('Junction', e?.response?.data?.detail ?? 'Could not disconnect right now. Please try again.');
     } finally { setJBusy(null); }
   }
 
@@ -112,14 +135,18 @@ export default function Cgm() {
               Link your FreeStyle Libre or Dexcom account once — readings stream in automatically.
               Make sure your LibreView/LibreLinkUp login and region are correct when the browser asks.
             </Muted>
-            {devices?.length ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <View style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: c.inRange }} />
-                <Body style={{ fontWeight: '600', flex: 1 }}>
-                  Linked: {devices.map((d) => (d.name && d.name !== 'Unknown' ? d.name : d.provider_id || 'sensor')).join(', ')}
-                </Body>
-              </View>
-            ) : null}
+            {devices?.length ? devices.map((d) => {
+              const name = d.name && d.name !== 'Unknown' ? d.name : d.provider_id || 'sensor';
+              return (
+                <View key={d.provider_id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <View style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: c.inRange }} />
+                  <Body style={{ fontWeight: '600', flex: 1 }}>Linked: {name}</Body>
+                  <Ionicons name="trash-outline" size={20} color={c.hyper}
+                    disabled={jBusy === 'disconnect'}
+                    onPress={() => confirmDisconnect(d.provider_id, name)} />
+                </View>
+              );
+            }) : null}
             <Button title={devices?.length ? 'Manage / relink' : 'Connect with Junction'}
               onPress={connectJunction} loading={jBusy === 'link'} />
             <Button title="Sync now" variant="ghost" onPress={syncJunction}
