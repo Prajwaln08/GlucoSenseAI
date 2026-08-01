@@ -148,20 +148,37 @@ matrix, and the app serves whichever phase the user is in.
 ¹ While-on-CGM keeps no held-out test split — the *live CGM stream is the real test_, so models
 are validated on the last 2 days. (See [validation.md](docs/validation.md).)
 
+### Tiers: what the app *serves* vs. what §7 *benchmarks*
+
+Every phase has **two tiers** — a **population** model (trained across all subjects) and a
+**personal** model (trained on the individual). Which one a user gets is not fixed per phase;
+it's decided by one question: **do we have enough of *your own* glucose to train on yet?**
+
+| Phase | Served in the app | Why that tier |
+|---|---|---|
+| **While-on-CGM** | **Personal** — trained at day 8 (before that: raw CGM only, *never* a population guess) | The user's own sensor gives enough data to learn *their* glucose response |
+| **Post-CGM** | **Personal** — trained from the just-finished CGM journey | Uses that user's own recent glucose history |
+| **Virtual CGM** | **Population** — by necessity | No sensor ⇒ no personal glucose exists to train on; the model is borrowed from many people |
+
+So *personal vs. population* isn't about the phase — it's about **whether personal glucose data
+exists.** With a sensor you eventually get a personal model; without one, Virtual CGM leans on
+the population.
+
 ### Performance by phase — RMSE (mg/dL) / Clarke-A (%)
-CGMacros validation. The pattern is **graceful degradation**: the more data a phase has, the
-better it forecasts — yet even watch-only Virtual CGM stays clinically usable.
+CGMacros validation. **Graceful degradation:** the more (and more personal) data a phase has,
+the better it forecasts — yet even watch-only Virtual CGM stays clinically usable.
 
-| Phase | data available | 30 min | 60 min | 90 min | 120 min |
-|---|---|---|---|---|---|
-| **1. While-on-CGM** (population) | glucose + watch + food | **11.4** / 95% | 18.4 / 85% | 21.8 / 80% | 23.6 / 77% |
-| **2. Post-CGM** (personal, median of 22) | recent glucose + watch + food | 17.8 / 60% | 19.0 / 54% | 19.8 / 58% | 20.5 / 53% |
-| **3. Virtual CGM** (population) | watch + food only | 22.6 / 74% | 23.2 / 72% | 24.0 / 71% | 24.3 / 70% |
+| Phase | Tier shown | Data available | 30 min | 60 min | 90 min | 120 min |
+|---|---|---|---|---|---|---|
+| **1. While-on-CGM** | population *(research benchmark; app serves **personal**, which matches-or-beats this — see §7.4)* | glucose + watch + food | **11.4** / 95% | 18.4 / 85% | 21.8 / 80% | 23.6 / 77% |
+| **2. Post-CGM** | **personal** (median of 22 users) | recent glucose + watch + food | 17.8 / 60% | 19.0 / 54% | 19.8 / 58% | 20.5 / 53% |
+| **3. Virtual CGM** | **population** (the served tier) | watch + food only | 22.6 / 74% | 23.2 / 72% | 24.0 / 71% | 24.3 / 70% |
 
-*While-on-CGM leads because the current reading anchors the forecast (delta model). Post-CGM
-and Virtual CGM predict absolute glucose from weaker signals, so they start higher but stay
-remarkably flat across the horizon — the watch/meal signal degrades slowly. §7 is the deep,
-self-critical evaluation of Phase 1.*
+*Row 1 is the **population benchmark** — the clean cross-subject yardstick §7 evaluates in depth.
+In production, While-on-CGM users are served their **personal** model (§7.4 shows it beats
+population by ~5% MARD at long horizons). While-on-CGM leads overall because the current reading
+anchors the forecast (delta model); Post-CGM and Virtual CGM predict absolute glucose from weaker
+signals, so they start higher but stay remarkably flat across the horizon.*
 
 **How each phase works**
 
