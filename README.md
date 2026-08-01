@@ -117,16 +117,28 @@ Two research cohorts provide the training data; live users add their own once de
 
 | Source | Subjects | Contents |
 |---|---:|---|
-| **CGMacros** | 45 | CGM traces, meal macronutrients, activity, demographics (~20 GB raw) |
-| **Nature-paper cohort** | 9 | CGM + biomarkers / demographics |
+| **[CGMacros][cgmacros]** | 45 | CGM traces, meal macronutrients, activity, demographics (~20 GB raw) |
+| **[Glucdict][glucdict]** (a.k.a. "Nature-paper" cohort) | 9 | CGM + wearable-sensor biomarkers / demographics |
 | **Live platform data** | growing | Per-minute watch vitals (HR, steps, SpO₂, calories), CGM streams, food logs — same schema the models train on |
 
-<!-- TODO (data provenance — fill in): -->
-<!--  · CGMacros dataset — <platform/dataset name + URL + license> -->
-<!--  · Nature-paper cohort — <paper title, authors, journal, year, DOI/URL> -->
-> **Data sources.** The two research cohorts come from a published dataset platform and a
-> peer-reviewed research paper *(citations to be added above)*. Raw data is **gitignored** and
-> never committed; only trained-model metadata and aggregate metrics live in the repo.
+> **Data sources & citations.** Both research cohorts are publicly published datasets. Raw
+> data is **gitignored** and never committed; only trained-model metadata and aggregate
+> metrics live in the repo. Please cite the original authors when reusing:
+>
+> - **CGMacros** — Gutierrez-Osuna, R., Kerr, D., Mortazavi, B., & Das, A. (2025).
+>   *CGMacros: a scientific dataset for personalized nutrition and diet monitoring* (v1.0.0).
+>   PhysioNet. DOI: [10.13026/3z8q-x658](https://doi.org/10.13026/3z8q-x658)
+>   (latest: [10.13026/8mak-rs10](https://doi.org/10.13026/8mak-rs10)) ·
+>   [physionet.org/content/cgmacros][cgmacros]
+> - **Glucdict — Wearable Sensors and CGM** — Pikulin, S. (2024). *Glucdict — Wearable
+>   Sensors and CGM* [Dataset]. figshare. DOI:
+>   [10.6084/m9.figshare.25939312](https://doi.org/10.6084/m9.figshare.25939312) ·
+>   [figshare.com][glucdict]
+>
+> See each source page for its exact license and data-use terms.
+
+[cgmacros]: https://physionet.org/content/cgmacros/1.0.0/
+[glucdict]: https://figshare.com/articles/dataset/Glucdict_-_Wearable_Sensors_and_CGM/25939312
 
 **Preprocessing target grid:** every subject is resampled to a **10-minute grid**, clinically
 range-checked, and imputed — producing ~**94 features** and forecast targets at 30/60/90/120 min.
