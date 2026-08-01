@@ -40,11 +40,16 @@ LLM health assistant on top.
 
 ## 1. Try It
 
+### ▶️ [Watch the app walkthrough (1:53)](https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing)
+A full demo — account creation, onboarding, the live forecast graph, Doctor Gluco chat, and
+both model journeys (Personalized CGM vs. watch-only Virtual CGM).
+
 | What | Link |
 |---|---|
-| 📱 **Android app (APK)** | `<!-- TODO: paste the EAS APK link here -->` — open on Android, allow install from browser |
+| 🎬 **App walkthrough video** | https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing |
 | 🌐 **Web app** (same account & data, any browser) | https://glucosense-api-dj43.onrender.com |
 | 🔌 **REST API docs** (OpenAPI) | https://glucosense-api-dj43.onrender.com/docs |
+| 📱 **Android app (APK)** | `<!-- TODO: paste an EAS APK link here (optional) -->` |
 
 **Quick start in the app:** register with an email → fill the short health profile →
 connect a data source (a smartwatch via Health Connect for "Virtual CGM" estimates, and/or
