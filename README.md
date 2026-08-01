@@ -180,7 +180,16 @@ features are strictly **backward-looking** (audited — see §7 leakage audit).
 Population tier, CGMacros While-on-CGM (45 subjects, ~12k validation samples). The evaluation is
 deliberately **self-critical** — it reports where the models fail, not just where they win.
 Everything here is reproducible from `scripts/evaluate_*.py`, run **offline** (never imported by
-the app; 145 unit tests remain green).
+the app; 145 unit tests remain green). Charts regenerate via `scripts/plot_evaluation.py`.
+
+| | |
+|:--:|:--:|
+| ![Baselines](docs/figures/01_baselines_rmse.png) | ![Hypo detection](docs/figures/02_hypo_sensitivity.png) |
+| **§7.1** Models beat the naive baseline 31–34% | **§7.2** …yet catch fewer 2-h lows than it |
+| ![Personalization](docs/figures/03_personalization_lift.png) | ![LOSO](docs/figures/04_loso_cold_start.png) |
+| **§7.4** Personalization: null early, significant by 2 h | **§7.5** New-user cold-start penalty → 24% |
+| ![Conformal](docs/figures/05_conformal_coverage.png) | ![Drift](docs/figures/07_drift.png) |
+| **§7.3** Intervals calibrated — tails under-covered | **§7.6** Live population 3× more hypoglycemic |
 
 ### 7.1 Accuracy vs. a naive baseline *(is it better than "predict the last reading"?)*
 | Horizon | Persistence RMSE | Best model RMSE | Improvement | MARD | Clarke A |

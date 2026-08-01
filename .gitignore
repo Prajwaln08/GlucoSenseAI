@@ -128,3 +128,7 @@ local_dev.db
 # Private career/working docs — never publish
 docs/GAP_ANALYSIS.md
 docs/EVAL_ROADMAP.md
+
+# Evaluation charts — committable for the README
+!/docs/figures/
+!/docs/figures/*.png
