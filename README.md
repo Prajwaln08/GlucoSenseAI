@@ -118,7 +118,7 @@ Two research cohorts provide the training data; live users add their own once de
 | Source | Subjects | Contents |
 |---|---:|---|
 | **[CGMacros][cgmacros]** | 45 | CGM traces, meal macronutrients, activity, demographics (~20 GB raw) |
-| **[Glucdict][glucdict]** (a.k.a. "Nature-paper" cohort) | 9 | CGM + wearable-sensor biomarkers / demographics |
+| **[BIG IDEAs Lab Glycemic Variability][bigideas]** (the "Nature-paper" cohort) | 16 | Dexcom G6 CGM + Empatica E4 wearable, biomarkers / demographics |
 | **Live platform data** | growing | Per-minute watch vitals (HR, steps, SpO₂, calories), CGM streams, food logs — same schema the models train on |
 
 > **Data sources & citations.** Both research cohorts are publicly published datasets. Raw
@@ -130,15 +130,17 @@ Two research cohorts provide the training data; live users add their own once de
 >   PhysioNet. DOI: [10.13026/3z8q-x658](https://doi.org/10.13026/3z8q-x658)
 >   (latest: [10.13026/8mak-rs10](https://doi.org/10.13026/8mak-rs10)) ·
 >   [physionet.org/content/cgmacros][cgmacros]
-> - **Glucdict — Wearable Sensors and CGM** — Pikulin, S. (2024). *Glucdict — Wearable
->   Sensors and CGM* [Dataset]. figshare. DOI:
->   [10.6084/m9.figshare.25939312](https://doi.org/10.6084/m9.figshare.25939312) ·
->   [figshare.com][glucdict]
+> - **BIG IDEAs Lab Glycemic Variability and Wearable Device Data** — Cho, P., Kim, J.,
+>   Bent, B., & Dunn, J. (2026). *BIG IDEAs Lab Glycemic Variability and Wearable Device
+>   Data* (v1.1.3). PhysioNet. DOI: [10.13026/aw6y-fc44](https://doi.org/10.13026/aw6y-fc44)
+>   (latest: [10.13026/w591-tp72](https://doi.org/10.13026/w591-tp72)) ·
+>   [physionet.org/content/big-ideas-glycemic-wearable][bigideas] · Open Data Commons
+>   Attribution License v1.0
 >
-> See each source page for its exact license and data-use terms.
+> Both are PhysioNet datasets — see each source page for its exact license and data-use terms.
 
 [cgmacros]: https://physionet.org/content/cgmacros/1.0.0/
-[glucdict]: https://figshare.com/articles/dataset/Glucdict_-_Wearable_Sensors_and_CGM/25939312
+[bigideas]: https://physionet.org/content/big-ideas-glycemic-wearable/1.1.3/
 
 **Preprocessing target grid:** every subject is resampled to a **10-minute grid**, clinically
 range-checked, and imputed — producing ~**94 features** and forecast targets at 30/60/90/120 min.
