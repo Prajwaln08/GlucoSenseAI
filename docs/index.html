@@ -177,27 +177,27 @@
       <svg viewBox="0 0 720 150" role="img" aria-label="Glucose trace: measured history transitioning to a dashed forecast across the target range band">
         <defs>
           <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="var(--accent)" stop-opacity="0.20"/>
-            <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+            <stop offset="0" style="stop-color:var(--accent);stop-opacity:.20"/>
+            <stop offset="1" style="stop-color:var(--accent);stop-opacity:0"/>
           </linearGradient>
         </defs>
         <!-- target range band (70–180 mg/dL) -->
-        <rect x="0" y="52" width="720" height="60" fill="var(--range)"/>
-        <line x1="0" y1="52" x2="720" y2="52" stroke="var(--range-line)" stroke-width="1" stroke-dasharray="2 4"/>
-        <line x1="0" y1="112" x2="720" y2="112" stroke="var(--range-line)" stroke-width="1" stroke-dasharray="2 4"/>
-        <text x="6" y="48" font-family="var(--mono)" font-size="10" fill="var(--muted)">180</text>
-        <text x="6" y="126" font-family="var(--mono)" font-size="10" fill="var(--muted)">70</text>
+        <rect x="0" y="52" width="720" height="60" style="fill:var(--range)"/>
+        <line x1="0" y1="52" x2="720" y2="52" style="stroke:var(--range-line);stroke-width:1;stroke-dasharray:2 4"/>
+        <line x1="0" y1="112" x2="720" y2="112" style="stroke:var(--range-line);stroke-width:1;stroke-dasharray:2 4"/>
+        <text x="6" y="48" style="font-family:var(--mono);font-size:10px;fill:var(--muted)">180</text>
+        <text x="6" y="126" style="font-family:var(--mono);font-size:10px;fill:var(--muted)">70</text>
         <!-- area under measured line -->
-        <path d="M0,84 C40,74 70,58 110,64 C150,70 175,98 210,90 C250,81 275,44 320,54 C360,63 400,96 470,78 L470,150 L0,150 Z" fill="url(#fill)"/>
+        <path d="M0,84 C40,74 70,58 110,64 C150,70 175,98 210,90 C250,81 275,44 320,54 C360,63 400,96 470,78 L470,150 L0,150 Z" style="fill:url(#fill)"/>
         <!-- measured (solid) -->
-        <path d="M0,84 C40,74 70,58 110,64 C150,70 175,98 210,90 C250,81 275,44 320,54 C360,63 400,96 470,78" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M0,84 C40,74 70,58 110,64 C150,70 175,98 210,90 C250,81 275,44 320,54 C360,63 400,96 470,78" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round"/>
         <!-- forecast (dashed) -->
-        <path d="M470,78 C510,68 545,50 590,58 C635,66 675,92 720,84" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 5"/>
+        <path d="M470,78 C510,68 545,50 590,58 C635,66 675,92 720,84" style="fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:6 5"/>
         <!-- now divider -->
-        <line x1="470" y1="14" x2="470" y2="132" stroke="var(--line-strong)" stroke-width="1.5"/>
-        <circle cx="470" cy="78" r="4.5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5"/>
-        <text x="462" y="26" text-anchor="end" font-family="var(--mono)" font-size="10.5" fill="var(--ink-soft)">measured</text>
-        <text x="478" y="26" font-family="var(--mono)" font-size="10.5" fill="var(--accent)">forecast →</text>
+        <line x1="470" y1="14" x2="470" y2="132" style="stroke:var(--line-strong);stroke-width:1.5"/>
+        <circle cx="470" cy="78" r="4.5" style="fill:var(--surface);stroke:var(--accent);stroke-width:2.5"/>
+        <text x="462" y="26" text-anchor="end" style="font-family:var(--mono);font-size:10.5px;fill:var(--ink-soft)">measured</text>
+        <text x="478" y="26" style="font-family:var(--mono);font-size:10.5px;fill:var(--accent)">forecast →</text>
       </svg>
       <div class="chart-cap">
         <div class="legend">
