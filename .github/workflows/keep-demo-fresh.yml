@@ -1,0 +1,26 @@
+name: keep-demo-fresh
+
+# Keeps the demo accounts' data fresh so their forecasts always render on the public
+# app — independent of any local machine. Also keeps the free-tier service warm.
+# Runs from GitHub's servers every ~10 minutes.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"      # every 10 min (GitHub may delay a few min under load)
+  workflow_dispatch: {}          # allow manual runs from the Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping demo-refresh endpoint (retries for free-tier cold start)
+        run: |
+          URL="https://glucosense-api-dj43.onrender.com/admin/refresh-demo"
+          for i in 1 2 3; do
+            code=$(curl -s -o /tmp/out -w "%{http_code}" -m 90 -X POST "$URL" \
+              -H "x-demo-token: ${{ secrets.DEMO_REFRESH_TOKEN }}") || true
+            echo "attempt $i → HTTP $code"; cat /tmp/out 2>/dev/null || true; echo
+            [ "$code" = "200" ] && exit 0
+            sleep 30
+          done
+          echo "refresh did not return 200 (service may be waking); non-fatal"
