@@ -46,10 +46,13 @@ both model journeys (Personalized CGM vs. watch-only Virtual CGM).
 
 | What | Link |
 |---|---|
-| 🎬 **App walkthrough video** | https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing |
-| 🌐 **Web app** (same account & data, any browser) | https://glucosense-api-dj43.onrender.com |
+| 🎬 **App walkthrough video** (the real app UI) | https://drive.google.com/file/d/1hd9ULevlGdTchsUHeUKccYOp6Rz8YKbk/view?usp=sharing |
+| 📱 **Android app — download the APK** (real app; sign in with the demo accounts below) | `<!-- APK_LINK -->` *(building — permanent GitHub-release link coming)* |
+| 🌐 **Web app** — *lightweight browser version, simplified UI* (same data & API) | https://glucosense-api-dj43.onrender.com |
 | 🔌 **REST API docs** (OpenAPI) | https://glucosense-api-dj43.onrender.com/docs |
-| 📱 **Android app (APK)** | `<!-- TODO: paste an EAS APK link here (optional) -->` |
+
+**Demo accounts** (to see forecasts immediately, no setup): `demo.cgm@glucosense.ai` (Personalized
+CGM) and `demo.watch@glucosense.ai` (Virtual CGM) — password `Demo12345!`.
 
 **Quick start in the app:** register with an email → fill the short health profile →
 connect a data source (a smartwatch via Health Connect for "Virtual CGM" estimates, and/or
@@ -144,6 +147,21 @@ matrix, and the app serves whichever phase the user is in.
 
 ¹ While-on-CGM keeps no held-out test split — the *live CGM stream is the real test_, so models
 are validated on the last 2 days. (See [validation.md](docs/validation.md).)
+
+### Performance by phase — RMSE (mg/dL) / Clarke-A (%)
+CGMacros validation. The pattern is **graceful degradation**: the more data a phase has, the
+better it forecasts — yet even watch-only Virtual CGM stays clinically usable.
+
+| Phase | data available | 30 min | 60 min | 90 min | 120 min |
+|---|---|---|---|---|---|
+| **1. While-on-CGM** (population) | glucose + watch + food | **11.4** / 95% | 18.4 / 85% | 21.8 / 80% | 23.6 / 77% |
+| **2. Post-CGM** (personal, median of 22) | recent glucose + watch + food | 17.8 / 60% | 19.0 / 54% | 19.8 / 58% | 20.5 / 53% |
+| **3. Virtual CGM** (population) | watch + food only | 22.6 / 74% | 23.2 / 72% | 24.0 / 71% | 24.3 / 70% |
+
+*While-on-CGM leads because the current reading anchors the forecast (delta model). Post-CGM
+and Virtual CGM predict absolute glucose from weaker signals, so they start higher but stay
+remarkably flat across the horizon — the watch/meal signal degrades slowly. §7 is the deep,
+self-critical evaluation of Phase 1.*
 
 **How each phase works**
 
