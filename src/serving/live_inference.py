@@ -302,6 +302,36 @@ def timeseries_for_user(db: Session, user, hours: int = 6) -> dict:
         return {**base, "status": "no_data"}
 
 
+def _backcast(feat_df, bundle, mode: str, minutes: int = 30, window: int = 18) -> list:
+    """The model's `minutes`-ahead prediction over the recent past — a tracking line that
+    overlays the actual curve, so the graph shows continuous past+future prediction.
+    Points carry horizon_min=None (drawn in the line, ignored by the app's horizon chips).
+    Fully guarded: any failure returns [] and leaves the live forecast untouched."""
+    try:
+        model, mfeat, scaler, imputer = bundle
+        rows = feat_df.iloc[-(window + 1):-1]                 # recent past, excluding 'now'
+        if mode == "cgm_active":
+            rows = rows[rows["glucose_mg_dl"].notna()]
+        if len(rows) < 2:
+            return []
+        X = rows.reindex(columns=mfeat)
+        if mode != "cgm_active":
+            X = X.apply(pd.to_numeric, errors="coerce")
+        if imputer is not None:
+            X = pd.DataFrame(imputer.transform(X), columns=mfeat, index=X.index)
+        if scaler is not None:
+            X = pd.DataFrame(scaler.transform(X), columns=mfeat, index=X.index)
+        preds = np.ravel(model.predict(X))
+        out = []
+        for (t, row), p in zip(rows.iterrows(), preds):
+            mgdl = (float(row["glucose_mg_dl"]) + p) if mode == "cgm_active" else float(p)
+            out.append({"t": (pd.to_datetime(t) + pd.Timedelta(minutes=minutes)).isoformat(),
+                        "mgdl": round(mgdl, 1), "horizon_min": None})
+        return out
+    except Exception:                                          # noqa: BLE001
+        return []
+
+
 def _forecast(db: Session, user, model_phase: str) -> dict:
     frame = build_live_frame(db, user)
     if frame is None:
@@ -347,6 +377,11 @@ def _forecast(db: Session, user, model_phase: str) -> dict:
         predicted.append({"t": (now + pd.Timedelta(minutes=h)).isoformat(),
                           "mgdl": round(mgdl, 1), "horizon_min": h})
 
+    # Backcast: the model's short-horizon prediction over the recent past, so the graph
+    # shows a continuous prediction line tracking the actual data (past) into the future.
+    back = _backcast(feat_df, _load_personal_bundle(model_phase, scope, horizons[0], reg), mode)
+    predicted = back + predicted
+
     result = {"status": "ready", "predicted": predicted}
     if model_phase != "while_on_cgm":
         result["now"] = now.isoformat()   # post_cgm: chart 'now' = current time, not last CGM
@@ -385,4 +420,7 @@ def _forecast_base(db: Session, user) -> dict:
         out = float(np.ravel(model.predict(X))[0])      # post_cgm mode → absolute glucose
         predicted.append({"t": (now + pd.Timedelta(minutes=h)).isoformat(),
                           "mgdl": round(out, 1), "horizon_min": h})
+    # Backcast over the recent past → continuous prediction line (see _forecast).
+    back = _backcast(feat_df, _load_personal_bundle(BASE_TIER, BASE_SCOPE, horizons[0], reg), "post_cgm")
+    predicted = back + predicted
     return {"status": "ready", "predicted": predicted, "model": "base", "now": now.isoformat()}
