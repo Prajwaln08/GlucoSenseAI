@@ -24,8 +24,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir -r requirements.txt
 
-# Source code only — models/data are bind-mounted at runtime
+# Source code only — models/data are bind-mounted at runtime (local dev)
 COPY src/ src/
+
+# Demo models for the deployed (Render) app: a small bundle (demo personal model +
+# lightgbm base) extracted into /app/models so the demo accounts render forecasts in
+# the cloud, where the full 62 GB model tree is absent. Additive — warm_cache logs
+# harmless warnings for any model not in this bundle. Local dev bind-mounts over it.
+COPY deploy/demo_models.tar.gz /tmp/demo_models.tar.gz
+RUN mkdir -p /app/models && tar xzf /tmp/demo_models.tar.gz -C /app && rm /tmp/demo_models.tar.gz
 
 ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
